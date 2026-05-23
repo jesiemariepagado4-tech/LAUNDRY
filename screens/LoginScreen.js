@@ -25,9 +25,18 @@ export default function LoginScreen({ navigation }) {
   const handleLogin = async () => {
     try {
       const userCredential = await signInWithEmailAndPassword(auth, recruitId, secretPassword);
+      
       // Store the session in local storage
       await AsyncStorage.setItem('@user_session', JSON.stringify(userCredential.user));
-      navigation.navigate('Dashboard');
+      
+      // --- THE CRITICAL FIX ---
+      // Check the email right here on the login screen before navigating
+      if (userCredential.user.email === 'admin@gmail.com') {
+        navigation.navigate('CommandCenter');
+      } else {
+        navigation.navigate('Dashboard');
+      }
+
     } catch (error) {
       Alert.alert('Login Failed', error.message);
     }
