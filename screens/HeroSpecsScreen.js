@@ -1,10 +1,37 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, useWindowDimensions, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
+// --- ADDED IMPORTS FOR LOGOUT ---
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { signOut } from 'firebase/auth';
+import { auth } from '../config/firebase';
+import LogoutModal from '../components/LogoutModal'; // <-- IMPORTED MODAL
 
 export default function HeroSpecsScreen({ navigation }) {
   const { width } = useWindowDimensions();
   const isSmallPhone = width < 390;
+
+  // <-- ADDED STATE -->
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false); 
+
+  // --- ADDED LOGOUT FUNCTION ---
+  const handleLogout = async () => {
+    try {
+      setIsLogoutModalVisible(false); // Close modal before transitioning
+      // 1. Tell Firebase to sign out
+      await signOut(auth);
+      // 2. Erase the saved session from the phone's memory
+      await AsyncStorage.removeItem('@user_session');
+      // 3. Reset the navigation stack so they can't swipe back into the app
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    } catch (error) {
+      Alert.alert("Logout Error", error.message);
+    }
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#2D1A5B' }}>
@@ -134,11 +161,18 @@ export default function HeroSpecsScreen({ navigation }) {
             marginHorizontal: 'auto',
             width: isSmallPhone ? '70%' : '60%'
           }}
-          onPress={() => navigation.replace('Login')}
+          onPress={() => setIsLogoutModalVisible(true)} // <-- TRIGGERS MODAL
         >
           <Text style={{ color: '#FF1493', fontWeight: '900', fontSize: 17, letterSpacing: 1 }}>LOGOUT</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* <-- MODAL COMPONENT RENDERED HERE --> */}
+      <LogoutModal 
+        visible={isLogoutModalVisible} 
+        onCancel={() => setIsLogoutModalVisible(false)} 
+        onConfirm={handleLogout} 
+      />
     </SafeAreaView>
   );
 }

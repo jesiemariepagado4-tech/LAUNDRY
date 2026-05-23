@@ -1,200 +1,123 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
+import React, { useState } from 'react'; // <-- Added useState
+import { 
+  View, 
+  Text, 
+  TouchableOpacity, 
+  ScrollView, 
+  StyleSheet, 
+  StatusBar,
+  Alert
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-export default function DashboardScreen({ navigation }) {
-  const { width } = useWindowDimensions();
-  const isSmallPhone = width < 390;
+// --- ADDED IMPORTS ---
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { signOut } from 'firebase/auth';
+import { auth } from '../config/firebase';
+import LogoutModal from '../components/LogoutModal';
+
+export default function CommandCenterScreen({ navigation }) {
+  // --- ADDED MODAL STATE ---
+  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
+
+  const [pendingPickups, setPendingPickups] = useState([
+    { id: '#882', name: 'ALEX J.', zone: 'Zone A', service: 'Wash & Fold' }
+  ]);
+
+  // --- LOGOUT LOGIC ---
+  const handleConfirmLogout = async () => {
+    try {
+      setIsLogoutModalVisible(false);
+      await signOut(auth);
+      await AsyncStorage.removeItem('@user_session');
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    } catch (error) {
+      Alert.alert("Logout Error", error.message);
+    }
+  };
+
+  const handleUpdateStatus = (missionId) => {
+    Alert.alert("Mission Update", `Updating status for mission ${missionId}...`);
+  };
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: '#2D1A5B' }}>
-      {/* Top Header */}
-      <View style={{
-        backgroundColor: '#1A0D3A',
-        padding: isSmallPhone ? 18 : 24,
-        paddingTop: isSmallPhone ? 50 : 48,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderBottomWidth: 2,
-        borderBottomColor: '#00FFED'
-      }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{
-            width: isSmallPhone ? 52 : 56,
-            height: isSmallPhone ? 52 : 56,
-            borderRadius: 999,
-            borderWidth: 4,
-            borderColor: '#00FFED',
-            backgroundColor: '#FF1493',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: isSmallPhone ? 12 : 16,
-          }}>
-            <Text style={{ fontSize: isSmallPhone ? 30 : 32 }}>🧑‍🚀</Text>
-          </View>
-          <View>
-            <Text style={{ 
-              color: '#FFFFFF', 
-              fontSize: isSmallPhone ? 19 : 21, 
-              fontWeight: '900', 
-              letterSpacing: 0.5 
-            }}>
-              Welcome, Captain_Wash!
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-              <Text style={{ color: '#FF1493', fontSize: isSmallPhone ? 12 : 13, fontWeight: '700' }}>Lvl 12</Text>
-              <View style={{ 
-                width: isSmallPhone ? 72 : 80, 
-                height: 6, 
-                backgroundColor: '#334155', 
-                borderRadius: 999, 
-                marginLeft: 10, 
-                overflow: 'hidden' 
-              }}>
-                <View style={{ width: '48%', height: '100%', backgroundColor: '#FF1493' }} />
-              </View>
-              <Text style={{ color: '#FFFFFF', opacity: 0.7, fontSize: isSmallPhone ? 11 : 12, marginLeft: 8 }}>
-                1.2K / 2.5K XP
-              </Text>
-            </View>
-          </View>
-        </View>
-
-        <TouchableOpacity onPress={() => navigation.navigate('AlertComms')}>
-          <Text style={{ fontSize: 28, color: '#00FFED' }}>🔔</Text>
-        </TouchableOpacity>
-      </View>
-
-      <ScrollView style={{ flex: 1, paddingHorizontal: isSmallPhone ? 20 : 24, paddingTop: 24 }}>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      <ScrollView contentContainerStyle={styles.scrollContent}>
         
-        {/* Active Missions */}
-        <Text style={{ 
-          color: '#00FFED', 
-          fontSize: isSmallPhone ? 19 : 20, 
-          fontWeight: '900', 
-          letterSpacing: 1, 
-          marginBottom: 12 
-        }}>
-          Active Missions
-        </Text>
+        {/* --- HEADER --- */}
+        <View style={styles.header}>
+          <Text style={styles.headerTitle}>COMMAND CENTER</Text>
+          <Text style={{ fontSize: 24 }}>📊</Text> 
+        </View>
 
-        <TouchableOpacity 
-          style={{
-            backgroundColor: 'rgba(255,255,255,0.06)',
-            borderWidth: 2,
-            borderColor: 'rgba(0,255,237,0.3)',
-            borderRadius: 20,
-            padding: 20,
-            marginBottom: 32
-          }}
-          onPress={() => navigation.navigate('MissionProgress')}
-        >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Text style={{ color: '#FFFFFF', fontSize: isSmallPhone ? 16 : 18, fontWeight: '900' }}>
-              Mission: Fresh Clothes
-            </Text>
-            <Text style={{ backgroundColor: '#FF1493', color: '#FFFFFF', fontSize: 12, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 999 }}>
-              #882
-            </Text>
+        {/* --- STATS ROW --- */}
+        <View style={styles.statsRow}>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>ACTIVE MSSNS</Text>
+            <Text style={styles.statValueCyan}>24</Text>
           </View>
-          <Text style={{ color: '#FFFFFF', opacity: 0.75, marginBottom: 12 }}>Pickup: Today @ 2:00 PM</Text>
-          
-          <View style={{ height: 7, backgroundColor: '#334155', borderRadius: 999, overflow: 'hidden' }}>
-            <View style={{ width: '85%', height: '100%', backgroundColor: '#00FFED' }} />
-          </View>
-          <Text style={{ color: '#00FFED', fontSize: 13, fontWeight: '700', textAlign: 'center', marginTop: 8 }}>
-            CLEANING_IN_PROGRESS (85%)
-          </Text>
-        </TouchableOpacity>
-
-        {/* Daily Quest */}
-        <Text style={{ 
-          color: '#FF1493', 
-          fontSize: isSmallPhone ? 19 : 20, 
-          fontWeight: '900', 
-          letterSpacing: 1, 
-          marginBottom: 12 
-        }}>
-          Daily Quest
-        </Text>
-
-        <View style={{
-          backgroundColor: 'rgba(255,255,255,0.06)',
-          borderWidth: 2,
-          borderColor: 'rgba(255,20,147,0.3)',
-          borderRadius: 20,
-          padding: 20,
-          flexDirection: 'row',
-          alignItems: 'center'
-        }}>
-          <Text style={{ fontSize: isSmallPhone ? 42 : 48, marginRight: 18 }}>🏆</Text>
-          <View>
-            <Text style={{ color: '#FFFFFF', fontSize: isSmallPhone ? 16 : 17, fontWeight: '700' }}>
-              Wash 5 full loads
-            </Text>
-            <Text style={{ color: '#FFFFFF', opacity: 0.65, fontSize: 14 }}>Rewards: Super Scent Bonus!</Text>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>CREDITS GAINED</Text>
+            <Text style={styles.statValuePink}>$1.2K</Text>
           </View>
         </View>
 
-        {/* Big Button */}
+        {/* --- PENDING PICKUPS --- */}
+        <Text style={styles.sectionTitle}>PENDING PICKUPS</Text>
+        {pendingPickups.map((mission, index) => (
+          <View key={index} style={styles.missionCard}>
+            <View style={styles.missionInfo}>
+              <Text style={styles.missionIdName}>{mission.id} - {mission.name}</Text>
+              <Text style={styles.missionDetails}>{mission.zone} • {mission.service}</Text>
+            </View>
+            <TouchableOpacity style={styles.updateButton} onPress={() => handleUpdateStatus(mission.id)}>
+              <Text style={styles.updateButtonText}>UPDATE</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+
+        {/* --- LOGOUT BUTTON --- */}
         <TouchableOpacity 
-          style={{
-            marginTop: 36,
-            backgroundColor: '#00FFED',
-            paddingVertical: isSmallPhone ? 16 : 20,
-            borderRadius: 999,
-            alignItems: 'center',
-            borderBottomWidth: 6,
-            borderBottomColor: '#00C2B4'
-          }}
-          onPress={() => navigation.navigate('PickupQuest')}
+          style={styles.logoutButton} 
+          onPress={() => setIsLogoutModalVisible(true)}
         >
-          <Text style={{ 
-            color: '#1A0D3A', 
-            fontSize: isSmallPhone ? 18 : 20, 
-            fontWeight: '900', 
-            letterSpacing: 1 
-          }}>
-            NEW PICKUP QUEST
-          </Text>
+          <Text style={styles.logoutText}>LOGOUT</Text>
         </TouchableOpacity>
+
       </ScrollView>
 
-      {/* Bottom Navigation */}
-      <View style={{
-        position: 'absolute',
-        bottom: 12,
-        left: 12,
-        right: 12,
-        backgroundColor: '#1A0D3A',
-        borderWidth: 2,
-        borderColor: 'rgba(0,255,237,0.6)',
-        borderRadius: 999,
-        padding: 10,
-        flexDirection: 'row',
-        justifyContent: 'space-around',
-      }}>
-        <TouchableOpacity style={{ alignItems: 'center', flex: 1 }} onPress={() => navigation.navigate('Dashboard')}>
-          <Text style={{ fontSize: 26 }}>🎮</Text>
-          <Text style={{ color: '#00FFED', fontSize: 10, fontWeight: '700', marginTop: 2 }}>HOME</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={{ alignItems: 'center', flex: 1, opacity: 0.6 }} onPress={() => navigation.navigate('PickupQuest')}>
-          <Text style={{ fontSize: 26 }}>🧺</Text>
-          <Text style={{ color: '#FFFFFF', fontSize: 10, marginTop: 2 }}>QUEST</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={{ alignItems: 'center', flex: 1, opacity: 0.6 }} onPress={() => navigation.navigate('CommandCenter')}>
-          <Text style={{ fontSize: 26 }}>📊</Text>
-          <Text style={{ color: '#FFFFFF', fontSize: 10, marginTop: 2 }}>HQ</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={{ alignItems: 'center', flex: 1, opacity: 0.6 }} onPress={() => navigation.navigate('HeroSpecs')}>
-          <Text style={{ fontSize: 26 }}>👤</Text>
-          <Text style={{ color: '#FFFFFF', fontSize: 10, marginTop: 2 }}>SPECS</Text>
-        </TouchableOpacity>
-      </View>
+      {/* --- MODAL --- */}
+      <LogoutModal 
+        visible={isLogoutModalVisible} 
+        onCancel={() => setIsLogoutModalVisible(false)} 
+        onConfirm={handleConfirmLogout} 
+      />
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: '#000000' },
+  scrollContent: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', paddingBottom: 20 },
+  headerTitle: { color: '#00FFED', fontSize: 28, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1 },
+  statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 40, gap: 16 },
+  statCard: { flex: 1, backgroundColor: '#0A0A0A', borderWidth: 2, borderColor: 'rgba(0, 255, 237, 0.3)', borderRadius: 20, padding: 20, alignItems: 'center', justifyContent: 'center' },
+  statLabel: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', letterSpacing: 2, marginBottom: 10 },
+  statValueCyan: { color: '#00FFED', fontSize: 36, fontWeight: '900', fontFamily: 'monospace' },
+  statValuePink: { color: '#FF1493', fontSize: 36, fontWeight: '900', fontFamily: 'monospace' },
+  sectionTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1, marginBottom: 16 },
+  missionCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111820', borderWidth: 2, borderColor: 'rgba(0, 255, 237, 0.4)', borderRadius: 20, padding: 20, marginBottom: 16 },
+  missionInfo: { flex: 1 },
+  missionIdName: { color: '#00FFED', fontSize: 16, fontWeight: '900', letterSpacing: 1, marginBottom: 6, fontFamily: 'monospace' },
+  missionDetails: { color: '#8d85b1', fontSize: 14 },
+  updateButton: { backgroundColor: '#FF1493', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12 },
+  updateButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
+  // --- ADDED LOGOUT BUTTON STYLE ---
+  logoutButton: { marginTop: 30, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#FF1493', borderRadius: 16 },
+  logoutText: { color: '#FF1493', fontWeight: '900', letterSpacing: 1 }
+});

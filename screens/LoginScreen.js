@@ -8,24 +8,41 @@ import {
   Platform, 
   ScrollView,
   StatusBar,
-  Alert // Added Alert
+  Alert 
 } from 'react-native';
 import { Svg, Path, Circle } from 'react-native-svg';
-// Added Firebase Auth imports
-import { signInWithEmailAndPassword } from 'firebase/auth';
+// Added AsyncStorage import
+import AsyncStorage from '@react-native-async-storage/async-storage';
+// Added GoogleAuthProvider and signInWithPopup
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth';
 import { auth } from '../config/firebase';
 
 export default function LoginScreen({ navigation }) {
   const [recruitId, setRecruitId] = useState('');
   const [secretPassword, setSecretPassword] = useState('');
 
-  // Updated handleLogin function
+  // Updated handleLogin function to store session
   const handleLogin = async () => {
     try {
-      await signInWithEmailAndPassword(auth, recruitId, secretPassword);
+      const userCredential = await signInWithEmailAndPassword(auth, recruitId, secretPassword);
+      // Store the session in local storage
+      await AsyncStorage.setItem('@user_session', JSON.stringify(userCredential.user));
       navigation.navigate('Dashboard');
     } catch (error) {
       Alert.alert('Login Failed', error.message);
+    }
+  };
+
+  // Added Google Sign-In function
+  const handleGoogleSignIn = async () => {
+    try {
+      const provider = new GoogleAuthProvider();
+      const userCredential = await signInWithPopup(auth, provider);
+      // Store the session in local storage
+      await AsyncStorage.setItem('@user_session', JSON.stringify(userCredential.user));
+      navigation.navigate('Dashboard');
+    } catch (error) {
+      Alert.alert('Google Login Failed', error.message);
     }
   };
 
@@ -156,6 +173,7 @@ export default function LoginScreen({ navigation }) {
           {/* Third-Party Federation (Google OAuth Connector) */}
           <TouchableOpacity 
             activeOpacity={0.85}
+            onPress={handleGoogleSignIn}
             style={{ borderColor: '#ffffff', backgroundColor: 'transparent', width: '100%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 28, borderWidth: 2, marginTop: 16, marginBottom: 28 }}
             className="w-full flex-row items-center justify-center p-4 rounded-full border-2 mb-4"
           >
