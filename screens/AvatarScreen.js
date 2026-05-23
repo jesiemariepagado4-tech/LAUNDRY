@@ -42,11 +42,8 @@ export default function AvatarScreen({ navigation }) {
 
       console.log("✅ Firestore data saved");
 
-      // FIXED: Go directly to Dashboard after successful registration
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Dashboard' }],
-      });
+      // Go to Login Screen
+      navigation.navigate('Login');
 
     } catch (error) {
       console.error("❌ Error:", error.code, error.message);

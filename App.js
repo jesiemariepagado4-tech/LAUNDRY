@@ -17,6 +17,11 @@ import HeroSpecsScreen from './screens/HeroSpecsScreen';
 import CommandCenterScreen from './screens/CommandCenterScreen';
 import AlertCommsScreen from './screens/AlertCommsScreen';
 
+// --- ADDED IMPORTS FOR NEW SCREENS ---
+import AchievementBadgesScreen from './screens/AchievementBadgesScreen';
+import MissionHistoryScreen from './screens/MissionHistoryScreen';
+import DeactivateProfileScreen from './screens/DeactivateProfileScreen';
+
 const Stack = createNativeStackNavigator();
 
 export default function App() {
@@ -84,6 +89,11 @@ export default function App() {
           <Stack.Screen name="HeroSpecs" component={HeroSpecsScreen} />
           <Stack.Screen name="CommandCenter" component={CommandCenterScreen} />
           <Stack.Screen name="AlertComms" component={AlertCommsScreen} />
+          
+          {/* --- ADDED NEW SCREENS TO STACK --- */}
+          <Stack.Screen name="AchievementBadges" component={AchievementBadgesScreen} />
+          <Stack.Screen name="MissionHistory" component={MissionHistoryScreen} />
+          <Stack.Screen name="DeactivateProfile" component={DeactivateProfileScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

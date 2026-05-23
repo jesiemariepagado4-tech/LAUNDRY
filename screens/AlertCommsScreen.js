@@ -1,25 +1,62 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { Svg, Path } from 'react-native-svg';
 
 export default function AlertCommsScreen({ navigation }) {
-  return (
-    <SafeAreaView className="flex-1 bg-purpleBg p-8">
-      <TouchableOpacity className="flex-row items-center mb-8" onPress={() => navigation.goBack()}>
-        <Text className="text-2xl text-aqua mr-4">◀</Text>
-        <Text className="text-3xl font-bold text-aqua">Alert Comms</Text>
-      </TouchableOpacity>
+  const { width } = useWindowDimensions();
+  const isSmallPhone = width < 390;
 
-      <ScrollView className="space-y-4">
-        <View className="p-5 bg-pink/10 border-l-8 border-pink rounded-r-2xl relative overflow-hidden mb-4">
-          <Text className="text-sm font-bold text-pink mb-1">!! LEVEL UP !!</Text>
-          <Text className="text-sm text-white/90 leading-relaxed">You’ve reached Level 12! Enclosed is your 10% discount power-up!</Text>
+  return (
+    <SafeAreaView style={{ flex: 1, backgroundColor: '#2D1A5B' }}>
+      <ScrollView style={{ flex: 1, paddingHorizontal: isSmallPhone ? 20 : 24, paddingTop: 20 }}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30 }}>
+          <TouchableOpacity onPress={() => navigation.goBack()}>
+            <Text style={{ fontSize: 28, color: '#00FFED', marginRight: 12 }}>◀</Text>
+          </TouchableOpacity>
+          <Text style={{ 
+            fontSize: isSmallPhone ? 26 : 30, 
+            fontWeight: '900', 
+            color: '#00FFED', 
+            letterSpacing: 1 
+          }}>
+            Alert Comms
+          </Text>
         </View>
-        
-        <View className="p-5 bg-aqua/10 border-l-8 border-aqua rounded-r-2xl">
-          <Text className="text-sm font-bold text-aqua mb-1">MISSION REMINDER</Text>
-          <Text className="text-sm text-white/90 leading-relaxed">Agent J arrives in 15 mins. Get your laundry ready!</Text>
-        </View>
+
+        <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 100 }}>
+          {/* Level Up Notification */}
+          <View style={{
+            backgroundColor: 'rgba(255,20,147,0.1)',
+            borderLeftWidth: 6,
+            borderLeftColor: '#FF1493',
+            borderRadius: 20,
+            padding: 20,
+            marginBottom: 20,
+            position: 'relative',
+            overflow: 'hidden'
+          }}>
+            <View style={{ position: 'absolute', right: -20, bottom: -20, opacity: 0.1 }}>
+              <Text style={{ fontSize: 80 }}>🏆</Text>
+            </View>
+            <Text style={{ color: '#FF1493', fontSize: 15, fontWeight: '700', marginBottom: 6 }}>!! LEVEL UP !!</Text>
+            <Text style={{ color: '#FFFFFF', lineHeight: 20 }}>You’ve reached Level 12! Enclosed is your 10% discount power-up!</Text>
+          </View>
+
+          {/* Mission Reminder */}
+          <View style={{
+            backgroundColor: 'rgba(0,255,237,0.1)',
+            borderLeftWidth: 6,
+            borderLeftColor: '#00FFED',
+            borderRadius: 20,
+            padding: 20,
+            marginBottom: 20
+          }}>
+            <Text style={{ color: '#00FFED', fontSize: 15, fontWeight: '700', marginBottom: 6 }}>MISSION REMINDER</Text>
+            <Text style={{ color: '#FFFFFF', lineHeight: 20 }}>Agent J arrives in 15 mins. Get your laundry ready!</Text>
+          </View>
+        </ScrollView>
       </ScrollView>
     </SafeAreaView>
   );

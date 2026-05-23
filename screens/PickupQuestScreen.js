@@ -6,6 +6,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { WebView } from 'react-native-webview';
+import { Svg, Path, Circle, Polyline } from 'react-native-svg';
 
 // --- NEW LOCATION IMPORT ---
 import * as Location from 'expo-location';
@@ -62,7 +63,6 @@ export default function PickupQuestScreen({ navigation }) {
           if (marker) map.removeLayer(marker);
           marker = L.marker(e.latlng).addTo(map);
           
-          // Reverse Geocoding API to get real address
           fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng)
             .then(res => res.json())
             .then(data => {
@@ -109,7 +109,6 @@ export default function PickupQuestScreen({ navigation }) {
   const handleAutoLocate = async () => {
     setIsLocating(true);
     try {
-      // 1. Request Permission
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission Denied', 'Allow location access to use auto-detect.');
@@ -117,11 +116,9 @@ export default function PickupQuestScreen({ navigation }) {
         return;
       }
 
-      // 2. Get Coordinates
       let location = await Location.getCurrentPositionAsync({});
       const { latitude, longitude } = location.coords;
 
-      // 3. Convert to Real Address
       const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
       const data = await response.json();
       
@@ -214,7 +211,9 @@ export default function PickupQuestScreen({ navigation }) {
       >
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30 }}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
-            <Text style={{ fontSize: 28, color: '#00FFED', marginRight: 12 }}>◀</Text>
+            <Svg width={28} height={28} viewBox="0 0 24 24" fill="none" style={{ marginRight: 12 }}>
+                <Path d="M15 19L8 12L15 5" stroke="#00FFED" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+            </Svg>
           </TouchableOpacity>
           <Text style={{ fontSize: isSmallPhone ? 26 : 30, fontWeight: '900', color: '#00FFED', letterSpacing: 1 }}>
             NEW PICKUP QUEST
@@ -230,9 +229,9 @@ export default function PickupQuestScreen({ navigation }) {
             </Text>
             <View style={{ flexDirection: 'row', gap: 12 }}>
               {[
-                { id: 'wash', label: 'Wash & Fold', emoji: '🧺' },
-                { id: 'dry', label: 'Dry Cleaning', emoji: '👔' },
-                { id: 'premium', label: 'Premium', emoji: '✨' }
+                { id: 'wash', label: 'Wash & Fold', svg: <Path d="M4 8H20V20C20 21.1046 19.1046 22 18 22H6C4.89543 22 4 21.1046 4 20V8Z" stroke="white" strokeWidth="2" strokeLinejoin="round"/> },
+                { id: 'dry', label: 'Dry Cleaning', svg: <Path d="M6 5H18L20 9V20C20 21.1046 19.1046 22 18 22H6C4.89543 22 4 21.1046 4 20V9L6 5Z" stroke="white" strokeWidth="2" strokeLinejoin="round"/> },
+                { id: 'premium', label: 'Premium', svg: <Path d="M12 2L15 8L22 9L17 14L18 21L12 17L6 21L7 14L2 9L9 8L12 2Z" stroke="white" strokeWidth="2" strokeLinejoin="round"/> }
               ].map(item => (
                 <TouchableOpacity 
                   key={item.id} onPress={() => setService(item.id)}
@@ -243,7 +242,7 @@ export default function PickupQuestScreen({ navigation }) {
                     alignItems: 'center'
                   }}
                 >
-                  <Text style={{ fontSize: 40 }}>{item.emoji}</Text>
+                  <Svg width={40} height={40} viewBox="0 0 24 24" fill="none">{item.svg}</Svg>
                   <Text style={{ color: '#fff', fontWeight: '700', marginTop: 8 }}>{item.label}</Text>
                 </TouchableOpacity>
               ))}
@@ -259,11 +258,17 @@ export default function PickupQuestScreen({ navigation }) {
               onPress={() => setShowMapModal(true)}
               style={{
                 backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 2, borderColor: '#00FFED33',
-                borderRadius: 20, padding: 18, minHeight: 110,
+                borderRadius: 20, padding: 18, minHeight: 110, flexDirection: 'row', alignItems: 'flex-start'
               }}
             >
-              <Text style={{ color: address ? '#fff' : 'rgba(255,255,255,0.5)', fontSize: 16 }}>
-                {address ? address : "📍 Tap to open map & select address..."}
+              {!address && (
+                <Svg width={20} height={20} viewBox="0 0 24 24" fill="none" style={{ marginTop: 2, marginRight: 8 }}>
+                  <Path d="M12 21C16.5 16.5 19 13.2357 19 10C19 6.13401 15.866 3 12 3C8.13401 3 5 6.13401 5 10C5 13.2357 7.5 16.5 12 21Z" stroke="rgba(255,255,255,0.5)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <Circle cx="12" cy="10" r="1" fill="rgba(255,255,255,0.5)"/>
+                </Svg>
+              )}
+              <Text style={{ color: address ? '#fff' : 'rgba(255,255,255,0.5)', fontSize: 16, flex: 1 }}>
+                {address ? address : "Tap to open map & select address..."}
               </Text>
             </TouchableOpacity>
           </View>
@@ -320,9 +325,21 @@ export default function PickupQuestScreen({ navigation }) {
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 20 }}>
           <View style={{ backgroundColor: '#2D1A5B', borderRadius: 24, padding: 24, borderWidth: 2, borderColor: '#00FFED', height: '85%' }}>
             
-            <Text style={{ color: '#00FFED', fontSize: 22, fontWeight: '900', fontStyle: 'italic', marginBottom: 15 }}>
-              📍 DEPLOYMENT ZONE
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+              <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" style={{ marginRight: 10 }}>
+                <Path 
+                  d="M12 21C16.5 16.5 19 13.2357 19 10C19 6.13401 15.866 3 12 3C8.13401 3 5 6.13401 5 10C5 13.2357 7.5 16.5 12 21Z" 
+                  stroke="#00FFED" 
+                  strokeWidth="2" 
+                  strokeLinecap="round" 
+                  strokeLinejoin="round"
+                />
+                <Circle cx="12" cy="10" r="2" fill="#00FFED"/>
+              </Svg>
+              <Text style={{ color: '#00FFED', fontSize: 22, fontWeight: '900', fontStyle: 'italic' }}>
+                DEPLOYMENT ZONE
+              </Text>
+            </View>
             
             {/* GPS Auto-Locate Button */}
             <TouchableOpacity 
@@ -334,7 +351,10 @@ export default function PickupQuestScreen({ navigation }) {
                 <ActivityIndicator color="#00FFED" />
               ) : (
                 <>
-                  <Text style={{ fontSize: 20, marginRight: 8 }}>🛰️</Text>
+                  <Svg width={24} height={24} viewBox="0 0 24 24" fill="none" style={{ marginRight: 8 }}>
+                    <Circle cx="12" cy="12" r="3" stroke="#00FFED" strokeWidth="2"/>
+                    <Path d="M12 2V4M12 20V22M2 12H4M20 12H22" stroke="#00FFED" strokeWidth="2" strokeLinecap="round"/>
+                  </Svg>
                   <Text style={{ color: '#00FFED', fontWeight: 'bold' }}>Auto-Detect Current Location</Text>
                 </>
               )}
