@@ -1,59 +1,110 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, ScrollView, useWindowDimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Svg, Path, Circle } from 'react-native-svg';
 
+// --- FIREBASE IMPORTS ---
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth'; 
+import { db, auth } from '../config/firebase';
+
 export default function DashboardScreen({ navigation }) {
   const { width } = useWindowDimensions();
-  const isSmallPhone = width < 390;   // Better detection for iPhone sizes
-  const isWeb = width > 768;
+  const isSmallPhone = (width || 800) < 390;
+
+  const [myMissions, setMyMissions] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // --- FETCH REAL-TIME MISSIONS BASED ON USER ID ---
+useEffect(() => {
+  if (!auth.currentUser) {
+    setIsLoading(false);
+    return;
+  }
+
+  const q = query(
+    collection(db, 'missions'),
+    where('userId', '==', auth.currentUser.uid)
+  );
+
+  const unsubscribe = onSnapshot(q, (snapshot) => {
+    const missionsData = [];
+    snapshot.forEach((doc) => {
+      if (doc.exists()) {
+        missionsData.push({ id: doc.id, ...doc.data() });
+      }
+    });
+    
+    // --- UPDATED FILTER LOGIC ---
+    // We filter out both cleared missions AND cancelled missions
+    const visibleMissions = missionsData
+      .filter(mission => !mission.userCleared && mission.status !== 'cancelled')
+      .sort((a, b) => {
+        const timeA = (a.createdAt && typeof a.createdAt.toMillis === 'function') ? a.createdAt.toMillis() : 0;
+        const timeB = (b.createdAt && typeof b.createdAt.toMillis === 'function') ? b.createdAt.toMillis() : 0;
+        return timeB - timeA;
+      });
+    
+    setMyMissions(visibleMissions);
+    setIsLoading(false);
+  }, (error) => {
+    console.error("Dashboard Listener Error: ", error);
+    setIsLoading(false);
+  });
+
+  return () => unsubscribe();
+}, []);
+
+  const getStatusDisplay = (status) => {
+    const safeStatus = String(status || '').toLowerCase();
+    switch (safeStatus) {
+      case 'pending_pickup':
+      case 'pending': 
+        return { text: 'AWAITING PICKUP (10%)', width: '10%', color: '#FBBF24' };
+      case 'weigh_in': 
+        return { text: 'AT HQ: WEIGH-IN (30%)', width: '30%', color: '#00FFED' };
+      case 'awaiting_payment': 
+        return { text: 'AWAITING FUNDS (50%)', width: '50%', color: '#FF1493' };
+      case 'cleaning': 
+        return { text: 'CLEANING OPS (80%)', width: '80%', color: '#00FFED' };
+      case 'completed': 
+        return { text: 'MISSION COMPLETE (100%)', width: '100%', color: '#34D399' };
+      case 'cancelled': 
+        return { text: 'MISSION ABORTED', width: '0%', color: '#F87171' };
+      default: 
+        return { text: 'UNKNOWN STATUS', width: '0%', color: '#8d85b1' };
+    }
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#2D1A5B' }}>
-      {/* Top Header - Smaller Text & Icon */}
+      {/* Top Header */}
       <View style={{
-        backgroundColor: '#1A0D3A',
-        padding: isSmallPhone ? 18 : 24,
-        paddingTop: isSmallPhone ? 50 : 48,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        borderBottomWidth: 2,
-        borderBottomColor: '#00FFED'
+        backgroundColor: '#1A0D3A', padding: isSmallPhone ? 18 : 24, paddingTop: isSmallPhone ? 50 : 48,
+        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+        borderBottomWidth: 2, borderBottomColor: '#00FFED'
       }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{
-            width: isSmallPhone ? 48 : 52,
-            height: isSmallPhone ? 48 : 52,
-            borderRadius: 999,
-            borderWidth: 4,
-            borderColor: '#00FFED',
-            backgroundColor: '#FF1493',
-            alignItems: 'center',
-            justifyContent: 'center',
-            marginRight: isSmallPhone ? 12 : 16,
+            width: isSmallPhone ? 48 : 52, height: isSmallPhone ? 48 : 52, borderRadius: 999,
+            borderWidth: 4, borderColor: '#00FFED', backgroundColor: '#FF1493',
+            alignItems: 'center', justifyContent: 'center', marginRight: isSmallPhone ? 12 : 16,
           }}>
             <Text style={{ fontSize: isSmallPhone ? 26 : 28 }}>🧑‍🚀</Text>
           </View>
           <View>
-            <Text style={{ 
-              color: '#FFFFFF', 
-              fontSize: isSmallPhone ? 17.5 : 19, 
-              fontWeight: '900', 
-              letterSpacing: 0.5 
-            }}>
-              Welcome, Captain_Wash!
+            <Text style={{ color: '#FFFFFF', fontSize: isSmallPhone ? 17.5 : 19, fontWeight: '900', letterSpacing: 0.5 }}>
+              Welcome, CAPTAIN_WASH!
             </Text>
+            
+            {/* NEW: Displays the raw logged-in email directly under the name safely */}
+            <Text style={{ color: '#00FFED', fontSize: 11, marginTop: 2, fontWeight: '700', letterSpacing: 0.5 }}>
+              {auth?.currentUser?.email || "Agent Offline"}
+            </Text>
+
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
               <Text style={{ color: '#FF1493', fontSize: isSmallPhone ? 11.5 : 12.5, fontWeight: '700' }}>Lvl 12</Text>
-              <View style={{ 
-                width: isSmallPhone ? 68 : 75, 
-                height: 5, 
-                backgroundColor: '#334155', 
-                borderRadius: 999, 
-                marginLeft: 10, 
-                overflow: 'hidden' 
-              }}>
+              <View style={{ width: isSmallPhone ? 68 : 75, height: 5, backgroundColor: '#334155', borderRadius: 999, marginLeft: 10, overflow: 'hidden' }}>
                 <View style={{ width: '48%', height: '100%', backgroundColor: '#FF1493' }} />
               </View>
               <Text style={{ color: '#FFFFFF', opacity: 0.7, fontSize: isSmallPhone ? 10.5 : 11.5, marginLeft: 8 }}>
@@ -71,72 +122,84 @@ export default function DashboardScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      <ScrollView style={{ 
-        flex: 1, 
-        paddingHorizontal: isSmallPhone ? 16 : 24, 
-        paddingTop: 24, 
-        paddingBottom: 110 
-      }}>
+      <ScrollView style={{ flex: 1, paddingHorizontal: isSmallPhone ? 16 : 24, paddingTop: 24, paddingBottom: 110 }}>
         
-        {/* Active Missions */}
-        <Text style={{ 
-          color: '#00FFED', 
-          fontSize: isSmallPhone ? 19 : 20, 
-          fontWeight: '900', 
-          letterSpacing: 1, 
-          marginBottom: 14 
-        }}>
+        <Text style={{ color: '#00FFED', fontSize: isSmallPhone ? 19 : 20, fontWeight: '900', letterSpacing: 1, marginBottom: 14 }}>
           Active Missions
         </Text>
 
-        <TouchableOpacity 
-          style={{
-            backgroundColor: 'rgba(255,255,255,0.05)',
-            borderWidth: 2,
-            borderColor: 'rgba(0,255,237,0.3)',
-            borderRadius: 20,
-            padding: isSmallPhone ? 16 : 20,
-            marginBottom: 32
-          }}
-          onPress={() => navigation.navigate('MissionProgress')}
-        >
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <Text style={{ color: '#FFFFFF', fontSize: isSmallPhone ? 16 : 18, fontWeight: '900' }}>
-              Mission: Fresh Clothes
+        {isLoading ? (
+          <ActivityIndicator color="#00FFED" size="large" style={{ marginVertical: 30 }} />
+        ) : myMissions.length === 0 ? (
+          <View style={{
+            backgroundColor: 'rgba(255,255,255,0.02)', borderWidth: 1, borderColor: '#475569', borderStyle: 'dashed',
+            borderRadius: 20, padding: 30, alignItems: 'center', marginBottom: 32
+          }}>
+            <Text style={{ fontSize: 40, marginBottom: 12 }}>📭</Text>
+            <Text style={{ color: '#00FFED', fontSize: 16, fontWeight: '900', letterSpacing: 1, marginBottom: 8 }}>
+              NO ACTIVE MISSIONS
             </Text>
-            <Text style={{ backgroundColor: '#FF1493', color: '#FFFFFF', fontSize: 12, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 999 }}>
-              #882
+            <Text style={{ color: '#8d85b1', textAlign: 'center', fontSize: 13, lineHeight: 20 }}>
+              Your quest log is empty, Captain! Deploy a new pickup to start earning XP and credits.
             </Text>
           </View>
-          <Text style={{ color: '#FFFFFF', opacity: 0.75, marginBottom: 12 }}>Pickup: Today @ 2:00 PM</Text>
-          
-          <View style={{ height: 7, backgroundColor: '#334155', borderRadius: 999, overflow: 'hidden' }}>
-            <View style={{ width: '85%', height: '100%', backgroundColor: '#00FFED' }} />
-          </View>
-          <Text style={{ color: '#00FFED', fontSize: 12.5, fontWeight: '700', textAlign: 'center', marginTop: 8 }}>
-            CLEANING_IN_PROGRESS (85%)
-          </Text>
-        </TouchableOpacity>
+        ) : (
+          myMissions.map((mission) => {
+            const safeMissionId = mission?.missionId ? String(mission.missionId) : '#---';
+            const safeService = mission?.serviceType ? String(mission.serviceType) : 'Unknown Protocol';
+            const safeTime = mission?.displayDateTime ? String(mission.displayDateTime) : 'Awaiting Time Data';
+            const statusStyle = getStatusDisplay(mission?.status);
 
-        {/* Daily Quest */}
-        <Text style={{ 
-          color: '#FF1493', 
-          fontSize: isSmallPhone ? 19 : 20, 
-          fontWeight: '900', 
-          letterSpacing: 1, 
-          marginBottom: 14 
-        }}>
+            return (
+              <TouchableOpacity 
+                key={mission.id}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.05)',
+                  borderWidth: 2,
+                  borderColor: statusStyle.width === '0%' ? '#F87171' : 'rgba(0,255,237,0.3)',
+                  borderRadius: 20,
+                  padding: isSmallPhone ? 16 : 20,
+                  marginBottom: 32
+                }}
+                onPress={() => navigation.navigate('MissionProgress', { 
+                  bookingId: safeMissionId, 
+                  service: safeService, 
+                  address: mission?.address || 'Unknown Base'
+                })}
+              >
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ color: '#FFFFFF', fontSize: isSmallPhone ? 16 : 18, fontWeight: '900' }}>
+                    Mission: {safeService}
+                  </Text>
+                  <Text style={{ 
+                    backgroundColor: statusStyle.width === '0%' ? '#F87171' : '#FF1493', 
+                    color: '#FFFFFF', fontSize: 12, fontWeight: '700', paddingHorizontal: 12, paddingVertical: 3, borderRadius: 999 
+                  }}>
+                    {safeMissionId}
+                  </Text>
+                </View>
+                <Text style={{ color: '#FFFFFF', opacity: 0.75, marginBottom: 12 }}>
+                  Time: {safeTime}
+                </Text>
+                
+                <View style={{ height: 7, backgroundColor: '#334155', borderRadius: 999, overflow: 'hidden' }}>
+                  <View style={{ width: statusStyle.width, height: '100%', backgroundColor: statusStyle.color }} />
+                </View>
+                <Text style={{ color: statusStyle.color, fontSize: 12.5, fontWeight: '700', textAlign: 'center', marginTop: 8 }}>
+                  {statusStyle.text}
+                </Text>
+              </TouchableOpacity>
+            );
+          })
+        )}
+
+        <Text style={{ color: '#FF1493', fontSize: isSmallPhone ? 19 : 20, fontWeight: '900', letterSpacing: 1, marginBottom: 14 }}>
           Daily Quest
         </Text>
 
         <View style={{
-          backgroundColor: 'rgba(255,255,255,0.05)',
-          borderWidth: 2,
-          borderColor: 'rgba(255,20,147,0.3)',
-          borderRadius: 20,
-          padding: isSmallPhone ? 16 : 20,
-          flexDirection: 'row',
-          alignItems: 'center'
+          backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 2, borderColor: 'rgba(255,20,147,0.3)',
+          borderRadius: 20, padding: isSmallPhone ? 16 : 20, flexDirection: 'row', alignItems: 'center'
         }}>
           <Svg width={48} height={48} viewBox="0 0 24 24" fill="none" style={{ marginRight: 18 }}>
             <Path d="M12 15C15.3137 15 18 12.3137 18 9V6C18 5.44772 17.5523 5 17 5H7C6.44772 5 6 5.44772 6 6V9C6 12.3137 8.68629 15 12 15Z" stroke="#FF1493" strokeWidth="2" strokeLinejoin="round"/>
@@ -153,43 +216,24 @@ export default function DashboardScreen({ navigation }) {
           </View>
         </View>
 
-        {/* Big Button */}
         <TouchableOpacity 
           style={{
-            marginTop: 36,
-            backgroundColor: '#00FFED',
-            paddingVertical: isSmallPhone ? 16 : 20,
-            borderRadius: 999,
-            alignItems: 'center',
-            borderBottomWidth: 6,
-            borderBottomColor: '#00C2B4'
+            marginTop: 36, backgroundColor: '#00FFED', paddingVertical: isSmallPhone ? 16 : 20,
+            borderRadius: 999, alignItems: 'center', borderBottomWidth: 6, borderBottomColor: '#00C2B4'
           }}
           onPress={() => navigation.navigate('PickupQuest')}
         >
-          <Text style={{ 
-            color: '#1A0D3A', 
-            fontSize: isSmallPhone ? 18 : 20, 
-            fontWeight: '900', 
-            letterSpacing: 1 
-          }}>
+          <Text style={{ color: '#1A0D3A', fontSize: isSmallPhone ? 18 : 20, fontWeight: '900', letterSpacing: 1 }}>
             NEW PICKUP QUEST
           </Text>
         </TouchableOpacity>
       </ScrollView>
 
-      {/* Bottom Navigation with SVG Icons */}
+      {/* Bottom Navigation */}
       <View style={{
-        position: 'absolute',
-        bottom: 12,
-        left: 12,
-        right: 12,
-        backgroundColor: '#1A0D3A',
-        borderWidth: 2,
-        borderColor: 'rgba(0,255,237,0.6)',
-        borderRadius: 999,
-        padding: 10,
-        flexDirection: 'row',
-        justifyContent: 'space-around',
+        position: 'absolute', bottom: 12, left: 12, right: 12, backgroundColor: '#1A0D3A',
+        borderWidth: 2, borderColor: 'rgba(0,255,237,0.6)', borderRadius: 999, padding: 10,
+        flexDirection: 'row', justifyContent: 'space-around',
       }}>
         <TouchableOpacity style={{ alignItems: 'center', flex: 1 }} onPress={() => navigation.navigate('Dashboard')}>
           <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
