@@ -14,46 +14,57 @@ export default function DashboardScreen({ navigation }) {
 
   const [myMissions, setMyMissions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Track user email for the display
+  const [userEmail, setUserEmail] = useState("Agent Offline");
 
   // --- FETCH REAL-TIME MISSIONS BASED ON USER ID ---
-useEffect(() => {
-  if (!auth.currentUser) {
-    setIsLoading(false);
-    return;
-  }
+  useEffect(() => {
+    let unsubscribeSnapshot;
 
-  const q = query(
-    collection(db, 'missions'),
-    where('userId', '==', auth.currentUser.uid)
-  );
+    const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        setUserEmail(user.email);
+        
+        const q = query(
+          collection(db, 'missions'),
+          where('userId', '==', user.uid)
+        );
 
-  const unsubscribe = onSnapshot(q, (snapshot) => {
-    const missionsData = [];
-    snapshot.forEach((doc) => {
-      if (doc.exists()) {
-        missionsData.push({ id: doc.id, ...doc.data() });
+        unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+          const missionsData = [];
+          snapshot.forEach((doc) => {
+            if (doc.exists()) {
+              missionsData.push({ id: doc.id, ...doc.data() });
+            }
+          });
+          
+          const visibleMissions = missionsData
+            .filter(mission => !mission.userCleared && mission.status !== 'cancelled')
+            .sort((a, b) => {
+              const timeA = (a.createdAt && typeof a.createdAt.toMillis === 'function') ? a.createdAt.toMillis() : 0;
+              const timeB = (b.createdAt && typeof b.createdAt.toMillis === 'function') ? b.createdAt.toMillis() : 0;
+              return timeB - timeA;
+            });
+          
+          setMyMissions(visibleMissions);
+          setIsLoading(false);
+        }, (error) => {
+          console.error("Dashboard Listener Error: ", error);
+          setIsLoading(false);
+        });
+      } else {
+        setUserEmail("Agent Offline");
+        setMyMissions([]);
+        setIsLoading(false);
       }
     });
-    
-    // --- UPDATED FILTER LOGIC ---
-    // We filter out both cleared missions AND cancelled missions
-    const visibleMissions = missionsData
-      .filter(mission => !mission.userCleared && mission.status !== 'cancelled')
-      .sort((a, b) => {
-        const timeA = (a.createdAt && typeof a.createdAt.toMillis === 'function') ? a.createdAt.toMillis() : 0;
-        const timeB = (b.createdAt && typeof b.createdAt.toMillis === 'function') ? b.createdAt.toMillis() : 0;
-        return timeB - timeA;
-      });
-    
-    setMyMissions(visibleMissions);
-    setIsLoading(false);
-  }, (error) => {
-    console.error("Dashboard Listener Error: ", error);
-    setIsLoading(false);
-  });
 
-  return () => unsubscribe();
-}, []);
+    return () => {
+      if (unsubscribeAuth) unsubscribeAuth();
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    };
+  }, []);
 
   const getStatusDisplay = (status) => {
     const safeStatus = String(status || '').toLowerCase();
@@ -93,13 +104,13 @@ useEffect(() => {
             <Text style={{ fontSize: isSmallPhone ? 26 : 28 }}>🧑‍🚀</Text>
           </View>
           <View>
+            {/* Hardcoded Hero Name as requested */}
             <Text style={{ color: '#FFFFFF', fontSize: isSmallPhone ? 17.5 : 19, fontWeight: '900', letterSpacing: 0.5 }}>
               Welcome, CAPTAIN_WASH!
             </Text>
             
-            {/* NEW: Displays the raw logged-in email directly under the name safely */}
             <Text style={{ color: '#00FFED', fontSize: 11, marginTop: 2, fontWeight: '700', letterSpacing: 0.5 }}>
-              {auth?.currentUser?.email || "Agent Offline"}
+              {userEmail}
             </Text>
 
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>

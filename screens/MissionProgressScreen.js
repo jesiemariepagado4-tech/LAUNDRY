@@ -84,7 +84,6 @@ export default function MissionProgressScreen({ route, navigation }) {
   const step4Active = isCleaning || isCompleted;
   const step5Active = isCompleted;
 
-  
   // --- LEAFLET MAP HTML ---
   const leafletHTML = `
     <!DOCTYPE html>
@@ -238,31 +237,6 @@ export default function MissionProgressScreen({ route, navigation }) {
             Mission Progress
           </Text>
         </View>
-
-        {/* --- 3D SCENE: VOXEL AGENT --- */}
-        {!isCancelled && (
-          <View style={{ height: 260, borderRadius: 20, overflow: 'hidden', marginBottom: 20, backgroundColor: 'transparent' }}>
-            {Platform.OS === 'web' ? (
-              <iframe 
-                srcDoc={threeJsHTML} 
-                style={{ width: '100%', height: '100%', border: 'none', backgroundColor: 'transparent' }} 
-                title="3D Animation"
-              />
-            ) : (
-              <WebView 
-                source={{ html: threeJsHTML }} 
-                style={{ flex: 1, backgroundColor: 'transparent' }} 
-                scrollEnabled={false}
-                originWhitelist={['*']}
-              />
-            )}
-            <View style={{ position: 'absolute', bottom: 10, alignSelf: 'center', pointerEvents: 'none', backgroundColor: 'rgba(0,0,0,0.4)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10 }}>
-              <Text style={{ color: '#00FFED', fontSize: 11, fontWeight: 'bold' }}>
-                👆 Drag to Spin • Tap to Wash
-              </Text>
-            </View>
-          </View>
-        )}
 
         {/* Mission Info Card */}
         <View style={{
