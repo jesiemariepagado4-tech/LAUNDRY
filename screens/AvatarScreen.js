@@ -75,15 +75,29 @@ export default function AvatarScreen({ navigation }) {
 
         <View style={{ marginBottom: 24 }}>
           <Text style={{ fontSize: 12, color: '#02ffd2', fontWeight: 'bold', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 }}>Select Hero Skin</Text>
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', backgroundColor: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 24, borderWidth: 2, borderColor: 'rgba(2,255,210,0.2)' }}>
-            {['🧑‍🚀', '🤖', '🥷', '👩‍🔬'].map((emoji) => {
-              const isSelected = skin === emoji;
-              return (
-                <TouchableOpacity key={emoji} onPress={() => { setSkin(emoji); setErrorMessage(''); }} style={{ width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: isSelected ? '#ff0d87' : 'rgba(255,255,255,0.1)', borderWidth: isSelected ? 4 : 0, borderColor: '#02ffd2' }}>
-                  <Text style={{ fontSize: 24 }}>{emoji}</Text>
-                </TouchableOpacity>
-              );
-            })}
+          <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: 12, borderRadius: 24, borderWidth: 2, borderColor: 'rgba(2,255,210,0.2)' }}>
+            {[
+              ['🧑‍🚀', '👽', '🤖', '👩‍🚀'],
+              ['🛸', '☄️', '👨‍🚀', '👾']
+            ].map((row, rowIndex) => (
+              <View key={rowIndex} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: rowIndex === 0 ? 12 : 0 }}>
+                {row.map((emoji) => {
+                  const isSelected = skin === emoji;
+                  return (
+                    <TouchableOpacity 
+                      key={emoji} 
+                      onPress={() => { setSkin(emoji); setErrorMessage(''); }} 
+                      style={{ 
+                        width: 56, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', 
+                        backgroundColor: isSelected ? '#ff0d87' : 'rgba(255,255,255,0.1)', borderWidth: isSelected ? 4 : 0, borderColor: '#02ffd2' 
+                      }}
+                    >
+                      <Text style={{ fontSize: 24 }}>{emoji}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            ))}
           </View>
         </View>
 
