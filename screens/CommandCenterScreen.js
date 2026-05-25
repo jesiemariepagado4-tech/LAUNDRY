@@ -1,4 +1,4 @@
-import React, { useState } from 'react'; // <-- Added useState
+import React, { useState, useEffect } from 'react';
 import { 
   View, 
   Text, 
@@ -6,41 +6,63 @@ import {
   ScrollView, 
   StyleSheet, 
   StatusBar,
-  Alert
+  Alert,
+  Dimensions,
+  ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { LineChart } from 'react-native-chart-kit';
+import { Svg, Path } from 'react-native-svg';
 
-// --- ADDED IMPORTS ---
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { signOut } from 'firebase/auth';
-import { auth } from '../config/firebase';
-import LogoutModal from '../components/LogoutModal';
+// --- FIREBASE IMPORTS ---
+import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { db, auth } from '../config/firebase';
 
 export default function CommandCenterScreen({ navigation }) {
-  // --- ADDED MODAL STATE ---
-  const [isLogoutModalVisible, setIsLogoutModalVisible] = useState(false);
+  const [pendingPickups, setPendingPickups] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const [pendingPickups, setPendingPickups] = useState([
-    { id: '#882', name: 'ALEX J.', zone: 'Zone A', service: 'Wash & Fold' }
-  ]);
+  // --- FETCH REAL-TIME MISSIONS ---
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (!user) return;
 
-  // --- LOGOUT LOGIC ---
-  const handleConfirmLogout = async () => {
-    try {
-      setIsLogoutModalVisible(false);
-      await signOut(auth);
-      await AsyncStorage.removeItem('@user_session');
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' }],
+    const q = query(collection(db, 'missions'), where('userId', '==', user.uid));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const missionsData = [];
+      snapshot.forEach((doc) => {
+        missionsData.push({ id: doc.id, ...doc.data() });
       });
-    } catch (error) {
-      Alert.alert("Logout Error", error.message);
-    }
+      // Filter for active missions only
+      setPendingPickups(missionsData.filter(m => !m.userCleared && m.status !== 'cancelled'));
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // --- MOVING GRAPH STATE ---
+  const [dataPoints, setDataPoints] = useState([2, 5, 3, 8, 4, 10, 7]);
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setDataPoints(prev => [...prev.slice(0, 6), Math.floor(Math.random() * 10) + 1]);
+    }, 2000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const screenWidth = Dimensions.get("window").width - 48;
+  const chartData = {
+    labels: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"],
+    datasets: [{ data: dataPoints }]
   };
 
-  const handleUpdateStatus = (missionId) => {
-    Alert.alert("Mission Update", `Updating status for mission ${missionId}...`);
+  // --- UPDATED NAVIGATION LOGIC ---
+  const handleUpdateStatus = (mission) => {
+    navigation.navigate('MissionProgress', { 
+      bookingId: mission.missionId || mission.id, 
+      service: mission.serviceType || 'Standard', 
+      address: mission.address || 'Unknown Base'
+    });
   };
 
   return (
@@ -48,54 +70,62 @@ export default function CommandCenterScreen({ navigation }) {
       <StatusBar barStyle="light-content" />
       <ScrollView contentContainerStyle={styles.scrollContent}>
         
-        {/* --- HEADER --- */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>COMMAND CENTER</Text>
-          <Text style={{ fontSize: 24 }}>📊</Text> 
+          <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+            <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+              <Path d="M15 19L8 12L15 5" stroke="#00FFED" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+            </Svg>
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Hero Status Hub</Text>
+          {/* Replaced 📊 with SVG */}
+          <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+            <Path d="M18 20V10M12 20V4M6 20V14" stroke="#00FFED" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </Svg>
         </View>
 
-        {/* --- STATS ROW --- */}
-        <View style={styles.statsRow}>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>ACTIVE MSSNS</Text>
-            <Text style={styles.statValueCyan}>24</Text>
-          </View>
-          <View style={styles.statCard}>
-            <Text style={styles.statLabel}>CREDITS GAINED</Text>
-            <Text style={styles.statValuePink}>$1.2K</Text>
-          </View>
-        </View>
+        <Text style={styles.sectionTitle}>WEEKLY PICKUPS</Text>
+        <LineChart
+          data={chartData}
+          width={screenWidth}
+          height={220}
+          chartConfig={{
+            backgroundColor: "#000000",
+            backgroundGradientFrom: "#0A0A0A",
+            backgroundGradientTo: "#0A0A0A",
+            decimalPlaces: 0,
+            color: (opacity = 1) => `rgba(0, 255, 237, ${opacity})`,
+            labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
+            style: { borderRadius: 16 },
+            propsForDots: { r: "6", strokeWidth: "2", stroke: "#FF1493" }
+          }}
+          bezier
+          style={styles.chartStyle}
+        />
 
-        {/* --- PENDING PICKUPS --- */}
         <Text style={styles.sectionTitle}>PENDING PICKUPS</Text>
-        {pendingPickups.map((mission, index) => (
-          <View key={index} style={styles.missionCard}>
-            <View style={styles.missionInfo}>
-              <Text style={styles.missionIdName}>{mission.id} - {mission.name}</Text>
-              <Text style={styles.missionDetails}>{mission.zone} • {mission.service}</Text>
-            </View>
-            <TouchableOpacity style={styles.updateButton} onPress={() => handleUpdateStatus(mission.id)}>
-              <Text style={styles.updateButtonText}>UPDATE</Text>
+        {isLoading ? (
+          <ActivityIndicator color="#00FFED" size="large" style={{ marginTop: 20 }} />
+        ) : pendingPickups.length > 0 ? (
+          pendingPickups.map((mission) => (
+            <TouchableOpacity 
+              key={mission.id} 
+              style={styles.missionCard}
+              onPress={() => handleUpdateStatus(mission)}
+            >
+              <View style={styles.missionInfo}>
+                <Text style={styles.missionIdName}>{mission.missionId || mission.id} - {mission.name || 'AGENT'}</Text>
+                <Text style={styles.missionDetails}>{mission.zone || 'Zone Unknown'} • {mission.serviceType || 'Standard'}</Text>
+              </View>
+              <View style={styles.updateButton}>
+                <Text style={styles.updateButtonText}>VIEW</Text>
+              </View>
             </TouchableOpacity>
-          </View>
-        ))}
-
-        {/* --- LOGOUT BUTTON --- */}
-        <TouchableOpacity 
-          style={styles.logoutButton} 
-          onPress={() => setIsLogoutModalVisible(true)}
-        >
-          <Text style={styles.logoutText}>LOGOUT</Text>
-        </TouchableOpacity>
+          ))
+        ) : (
+          <Text style={{ color: '#8d85b1', textAlign: 'center', marginTop: 20 }}>No pending missions.</Text>
+        )}
 
       </ScrollView>
-
-      {/* --- MODAL --- */}
-      <LogoutModal 
-        visible={isLogoutModalVisible} 
-        onCancel={() => setIsLogoutModalVisible(false)} 
-        onConfirm={handleConfirmLogout} 
-      />
     </SafeAreaView>
   );
 }
@@ -104,20 +134,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000' },
   scrollContent: { paddingHorizontal: 24, paddingTop: 20, paddingBottom: 40 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', paddingBottom: 20 },
-  headerTitle: { color: '#00FFED', fontSize: 28, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1 },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 40, gap: 16 },
-  statCard: { flex: 1, backgroundColor: '#0A0A0A', borderWidth: 2, borderColor: 'rgba(0, 255, 237, 0.3)', borderRadius: 20, padding: 20, alignItems: 'center', justifyContent: 'center' },
-  statLabel: { color: '#FFFFFF', fontSize: 10, fontWeight: '700', letterSpacing: 2, marginBottom: 10 },
-  statValueCyan: { color: '#00FFED', fontSize: 36, fontWeight: '900', fontFamily: 'monospace' },
-  statValuePink: { color: '#FF1493', fontSize: 36, fontWeight: '900', fontFamily: 'monospace' },
+  backButton: { marginRight: 10 },
+  headerTitle: { color: '#00FFED', fontSize: 24, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1, flex: 1 },
   sectionTitle: { color: '#FFFFFF', fontSize: 20, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1, marginBottom: 16 },
+  chartStyle: { marginVertical: 20, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(0, 255, 237, 0.2)' },
   missionCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111820', borderWidth: 2, borderColor: 'rgba(0, 255, 237, 0.4)', borderRadius: 20, padding: 20, marginBottom: 16 },
   missionInfo: { flex: 1 },
   missionIdName: { color: '#00FFED', fontSize: 16, fontWeight: '900', letterSpacing: 1, marginBottom: 6, fontFamily: 'monospace' },
   missionDetails: { color: '#8d85b1', fontSize: 14 },
   updateButton: { backgroundColor: '#FF1493', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 12 },
-  updateButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 },
-  // --- ADDED LOGOUT BUTTON STYLE ---
-  logoutButton: { marginTop: 30, padding: 16, alignItems: 'center', borderWidth: 1, borderColor: '#FF1493', borderRadius: 16 },
-  logoutText: { color: '#FF1493', fontWeight: '900', letterSpacing: 1 }
+  updateButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900', letterSpacing: 1 }
 });
