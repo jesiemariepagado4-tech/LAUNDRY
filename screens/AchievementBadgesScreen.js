@@ -163,7 +163,7 @@ export default function AchievementBadgesScreen({ navigation }) {
                     <Text style={{ color: '#FF6666', fontSize: 13, marginTop: 4 }}>Tap to unlock with 15 coins</Text>
                   )}
                   {isUnlocked && (
-                    <Text style={{ color: '#00FF88', fontSize: 13, marginTop: 4 }}>✓ Earned</Text>
+                    <Text style={{ color: '#00FF88', fontSize: 13, marginTop: 4 }}>✓ Earned.</Text>
                   )}
                 </View>
               </Pressable>
