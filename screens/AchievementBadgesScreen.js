@@ -1,95 +1,107 @@
-import React, { useState } from 'react';
-import { View, Text, SafeAreaView, TouchableOpacity, ScrollView, Alert, Pressable } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, SafeAreaView, TouchableOpacity, ScrollView, Alert, Pressable, ActivityIndicator } from 'react-native';
+
+// --- FIREBASE IMPORTS ---
+import { doc, onSnapshot, updateDoc, increment, arrayUnion } from 'firebase/firestore';
+import { db, auth } from '../config/firebase';
 
 export default function AchievementBadgesScreen({ navigation }) {
   // State
-  const [userCoinPoints, setUserCoinPoints] = useState(18);
-  const [isPremiumUnlocked, setIsPremiumUnlocked] = useState(false);
+  const [userXp, setUserXp] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRedeeming, setIsRedeeming] = useState(false);
 
-  // Mock data for badges
-  const badges = [
+  // --- FETCH REAL-TIME USER XP ---
+  useEffect(() => {
+    if (!auth.currentUser) return;
+    
+    const userRef = doc(db, 'users', auth.currentUser.uid);
+    const unsubscribe = onSnapshot(userRef, (docSnap) => {
+      if (docSnap.exists()) {
+        setUserXp(docSnap.data().xpBalance || 0);
+      }
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  // --- DISCOUNT TIERS ---
+  const rewardTiers = [
     { 
       id: 1, 
-      title: 'First Orbit', 
-      desc: 'Completed your first mission', 
-      icon: '🚀',
-      action: () => navigation.navigate('MissionProgress', { bookingId: 'FIRST-MISSION' }),
-      earned: true 
+      cost: 200, 
+      title: '10% Discount', 
+      desc: 'Get 10% off your entire next laundry pickup.', 
+      icon: '🎟️', 
+      code: 'DISCOUNT_10' 
     },
     { 
       id: 2, 
-      title: 'Speed Demon', 
-      desc: 'Finished mission under 2 mins', 
-      icon: '⚡',
-      action: () => Alert.alert("Speed Demon", "You are among the fastest agents!"),
-      earned: true 
+      cost: 400, 
+      title: '20% Discount', 
+      desc: 'Get 20% off your entire next laundry pickup.', 
+      icon: '🎫', 
+      code: 'DISCOUNT_20' 
     },
     { 
       id: 3, 
-      title: 'Veteran', 
-      desc: 'Reached Level 10', 
-      icon: '🎖️',
-      action: () => navigation.navigate('HeroSpecs'),
-      earned: false 
-    },
-    { 
-      id: 4, 
-      title: 'Premium Pioneer', 
-      desc: 'Collected 15 coins to unlock Premium', 
-      icon: '🌟',
-      premium: true 
-    },
+      cost: 1000, 
+      title: '50% Discount', 
+      desc: 'Half price! Get 50% off your next laundry pickup.', 
+      icon: '💎', 
+      code: 'DISCOUNT_50',
+      premium: true
+    }
   ];
 
-  // Handle Coin Usage
+  // Handle XP Info Tap
   const handleUseCoins = () => {
-    if (isPremiumUnlocked) {
-      Alert.alert("Cannot Use Coins", "You have already used your coins to unlock Premium Pioneer.");
-      return;
-    }
-
-    if (userCoinPoints <= 0) {
-      Alert.alert("No Coins Left", "You have no coin points remaining.");
+    if (userXp <= 0) {
+      Alert.alert("No XP Left", "Complete more laundry missions to earn XP!");
       return;
     }
 
     Alert.alert(
-      "Use Your Coins",
-      `You have ${userCoinPoints} coin points.\n\nWhat would you like to do?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        { text: "Spend on Pickups", onPress: () => navigation.navigate('PickupQuest') },
-        { text: "Other Rewards", onPress: () => Alert.alert("Rewards", "More spending options coming soon!") },
-      ]
+      "Your Armory Funds",
+      `You currently have ${userXp} XP.\n\nTap on any of the discount badges below to unlock them and save on your next pickup!`
     );
   };
 
-  // Handle Premium Unlock
-  const handlePremiumUnlock = () => {
-    if (isPremiumUnlocked) {
-      Alert.alert("Already Used", "You have already unlocked Premium Pioneer with your coins.");
+  // Handle Reward Unlock
+  const handleRewardUnlock = (cost, code, title) => {
+    if (userXp < cost) {
+      Alert.alert("Not Enough XP", `You need ${cost} XP to unlock this. You currently have ${userXp}.`);
       return;
     }
 
-    if (userCoinPoints >= 15) {
-      Alert.alert(
-        "Unlock Premium?",
-        "Spend 15 coins to unlock Premium Pioneer?",
-        [
-          { text: "Cancel", style: "cancel" },
-          { 
-            text: "Unlock Now", 
-            onPress: () => {
-              setUserCoinPoints(prev => prev - 15);
-              setIsPremiumUnlocked(true);
-              Alert.alert("✅ Success!", "Premium Pioneer Unlocked!");
+    Alert.alert(
+      "Unlock Discount?",
+      `Spend ${cost} XP to get ${title}?`,
+      [
+        { text: "Cancel", style: "cancel" },
+        { 
+          text: "Unlock Now", 
+          onPress: async () => {
+            setIsRedeeming(true);
+            try {
+              const userRef = doc(db, 'users', auth.currentUser.uid);
+              // Securely deduct XP and save the discount code
+              await updateDoc(userRef, {
+                xpBalance: increment(-cost), 
+                activeDiscounts: arrayUnion(code) 
+              });
+              Alert.alert("✅ Success!", `${title} Unlocked! It will automatically apply to your next booking.`);
+            } catch (error) {
+              console.error(error);
+              Alert.alert("Error", "Transaction failed. Please check your connection.");
+            } finally {
+              setIsRedeeming(false);
             }
           }
-        ]
-      );
-    } else {
-      Alert.alert("Not Enough Coins", `You need 15 coins. You currently have ${userCoinPoints}.`);
-    }
+        }
+      ]
+    );
   };
 
   return (
@@ -100,19 +112,21 @@ export default function AchievementBadgesScreen({ navigation }) {
         keyboardShouldPersistTaps="handled"
         bounces={false}
       >
+        {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30 }}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Text style={{ fontSize: 28, color: '#00FFED', marginRight: 12 }}>◀</Text>
           </TouchableOpacity>
-          <Text style={{ fontSize: 30, fontWeight: '900', color: '#00FFED' }}>Badges</Text>
+          <Text style={{ fontSize: 30, fontWeight: '900', color: '#00FFED' }}>Rewards Armory</Text>
         </View>
 
+        {/* User XP Wallet */}
         <Pressable 
           onPress={handleUseCoins}
           style={({ pressed }) => ({
-            backgroundColor: 'rgba(255, 215, 0, 0.15)',
+            backgroundColor: 'rgba(255, 20, 147, 0.15)', // Changed to Pink vibe
             borderWidth: 2,
-            borderColor: '#FFD700',
+            borderColor: '#FF1493',
             borderRadius: 16,
             padding: 16,
             marginBottom: 24,
@@ -123,53 +137,66 @@ export default function AchievementBadgesScreen({ navigation }) {
           })}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Text style={{ fontSize: 28, marginRight: 10 }}>🪙</Text>
+            {isLoading ? (
+              <ActivityIndicator color="#FF1493" style={{ marginRight: 15 }} />
+            ) : (
+              <Text style={{ fontSize: 28, marginRight: 10 }}>🎁</Text>
+            )}
             <View>
-              <Text style={{ color: '#FFD700', fontSize: 18, fontWeight: '700' }}>Coin Points</Text>
-              <Text style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '800' }}>{userCoinPoints}</Text>
+              <Text style={{ color: '#FF1493', fontSize: 18, fontWeight: '700' }}>Available Funds</Text>
+              <Text style={{ color: '#FFFFFF', fontSize: 22, fontWeight: '800' }}>{userXp} XP</Text>
             </View>
           </View>
-          <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: '600' }}>TAP TO USE →</Text>
+          <Text style={{ color: '#FF1493', fontSize: 16, fontWeight: '600' }}>HOW TO USE →</Text>
         </Pressable>
 
+        {/* Reward Tiers List */}
         <View style={{ gap: 16 }}>
-          {badges.map((badge) => {
-            const isUnlocked = badge.premium ? isPremiumUnlocked : badge.earned;
+          {rewardTiers.map((reward) => {
+            const isAffordable = userXp >= reward.cost;
             
             return (
               <Pressable 
-                key={badge.id}
-                onPress={badge.premium ? handlePremiumUnlock : badge.action}
+                key={reward.id}
+                onPress={() => handleRewardUnlock(reward.cost, reward.code, reward.title)}
+                disabled={isRedeeming}
                 style={({ pressed }) => ({
                   backgroundColor: 'rgba(255,255,255,0.06)',
                   borderWidth: 2,
-                  borderColor: isUnlocked ? '#FFD700' : 'rgba(0,255,237,0.25)',
+                  borderColor: isAffordable ? '#00FFED' : 'rgba(255,255,255,0.1)',
                   borderRadius: 20,
                   padding: 20,
                   flexDirection: 'row',
                   alignItems: 'center',
-                  opacity: pressed ? 0.8 : (badge.premium && !isPremiumUnlocked ? 0.7 : 1),
+                  opacity: pressed ? 0.8 : (isAffordable ? 1 : 0.6),
                 })}
               >
-                <Text style={{ fontSize: 40, marginRight: 20, opacity: isUnlocked ? 1 : 0.3 }}>{badge.icon}</Text>
+                <Text style={{ fontSize: 40, marginRight: 20, opacity: isAffordable ? 1 : 0.5 }}>
+                  {reward.icon}
+                </Text>
                 <View style={{ flex: 1 }}>
                   <Text style={{ color: '#FFFFFF', fontSize: 18, fontWeight: '700' }}>
-                    {badge.title} {badge.premium && <Text style={{ color: '#FFD700' }}>★</Text>}
+                    {reward.title} {reward.premium && <Text style={{ color: '#FFD700' }}>★</Text>}
                   </Text>
                   <Text style={{ color: '#00FFED', fontSize: 14, opacity: 0.8 }}>
-                    {badge.desc}
+                    {reward.desc}
                   </Text>
-                  {badge.premium && !isPremiumUnlocked && (
-                    <Text style={{ color: '#FF6666', fontSize: 13, marginTop: 4 }}>Tap to unlock with 15 coins</Text>
-                  )}
-                  {isUnlocked && (
-                    <Text style={{ color: '#00FF88', fontSize: 13, marginTop: 4 }}>✓ Earned.</Text>
+                  
+                  {isAffordable ? (
+                    <Text style={{ color: '#00FF88', fontSize: 13, marginTop: 6, fontWeight: 'bold' }}>
+                      Tap to unlock for {reward.cost} XP
+                    </Text>
+                  ) : (
+                    <Text style={{ color: '#FF6666', fontSize: 13, marginTop: 6 }}>
+                      Need {reward.cost - userXp} more XP
+                    </Text>
                   )}
                 </View>
               </Pressable>
             );
           })}
         </View>
+
       </ScrollView>
     </SafeAreaView>
   );

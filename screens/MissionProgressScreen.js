@@ -9,7 +9,8 @@ import { Svg, Path, Circle } from 'react-native-svg';
 
 // --- LOCATION & FIREBASE IMPORTS ---
 import * as Location from 'expo-location'; 
-import { collection, query, where, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+// NEW: Added setDoc and increment for the XP System
+import { collection, query, where, onSnapshot, doc, updateDoc, setDoc, increment } from 'firebase/firestore';
 import { db, auth } from '../config/firebase';
 
 export default function MissionProgressScreen({ route, navigation }) {
@@ -208,12 +209,38 @@ export default function MissionProgressScreen({ route, navigation }) {
     finally { setIsUpdating(false); }
   };
 
+  // --- NEW: GAMIFIED PAYMENT & XP SYSTEM ---
   const handleAuthorizePayment = async () => {
     setIsUpdating(true);
     try {
-      await updateDoc(doc(db, 'missions', missionDocId), { status: 'cleaning', paymentStatus: 'paid' });
-      Alert.alert("Funds Cleared", "Payment accepted. Cleaning operations are a go!");
-    } catch (error) { Alert.alert("Error", "Payment failed."); } 
+      // 1. Calculate XP (e.g., 10% of the price + 50 base XP)
+      const basePrice = parseFloat(missionPrice) || 450;
+      const earnedXp = Math.floor(basePrice / 10) + 50;
+
+      // 2. Update the Mission status to cleaning
+      await updateDoc(doc(db, 'missions', missionDocId), { 
+        status: 'cleaning', 
+        paymentStatus: 'paid' 
+      });
+
+      // 3. Add XP safely to the user's database document
+      // (Using setDoc with merge:true ensures it works even if this is their first mission)
+      const userRef = doc(db, 'users', auth.currentUser.uid);
+      await setDoc(userRef, {
+        xpBalance: increment(earnedXp),
+        lifetimeXp: increment(earnedXp)
+      }, { merge: true });
+
+      // 4. Show the gamified success alert!
+      Alert.alert(
+        "Funds Cleared ✨", 
+        `Payment accepted. Cleaning operations are a go!\n\n🎖️ You earned +${earnedXp} XP!`
+      );
+      
+    } catch (error) { 
+      console.error(error);
+      Alert.alert("Error", "Payment failed."); 
+    } 
     finally { setIsUpdating(false); }
   };
 
@@ -278,7 +305,7 @@ export default function MissionProgressScreen({ route, navigation }) {
             <View style={{ marginBottom: 60, position: 'relative', opacity: step1Active ? 1 : 0.45 }}>
               <View style={[styles.timelineNode, { backgroundColor: step1Active ? '#00FFED' : '#475569' }]} />
               <Text style={styles.timelineTitle}>1. Mission Deployed</Text>
-              <Text style={[styles.timelineSub, { color: step1Active ? '#00FFED' : '#FFFFFF' }]}>Agent J dispatched to zone.</Text>
+              <Text style={[styles.timelineSub, { color: step1Active ? '#00FFED' : '#FFFFFF' }]}>Agent dispatched to zone.</Text>
             </View>
 
             {/* Step 2: Extraction & Weigh-In */}

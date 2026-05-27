@@ -4,7 +4,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Svg, Path, Circle } from 'react-native-svg';
 
 // --- FIREBASE & STORAGE IMPORTS ---
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, setDoc } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db, auth } from '../config/firebase';
@@ -21,12 +21,14 @@ export default function DashboardScreen({ navigation }) {
   const [isDropdownVisible, setIsDropdownVisible] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
+  // --- REWARDS & XP STATES ---
+  const [userXp, setUserXp] = useState(0);
+
   // --- LOGOUT FUNCTION ---
   const handleLogout = async () => {
     setIsDropdownVisible(false);
-    setIsLoggingOut(true); // Trigger loading screen
+    setIsLoggingOut(true); 
 
-    // Wait 3 seconds
     setTimeout(async () => {
       try {
         await signOut(auth);
@@ -42,44 +44,62 @@ export default function DashboardScreen({ navigation }) {
     }, 3000);
   };
 
-  // --- FETCH REAL-TIME MISSIONS BASED ON USER ID ---
+  // --- FETCH REAL-TIME MISSIONS & USER XP ---
   useEffect(() => {
     let unsubscribeSnapshot;
+    let unsubscribeUser;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUserEmail(user.email);
         
-        const q = query(
-          collection(db, 'missions'),
-          where('userId', '==', user.uid)
-        );
+        try {
+          const q = query(
+            collection(db, 'missions'),
+            where('userId', '==', user.uid)
+          );
 
-        unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
-          const missionsData = [];
-          snapshot.forEach((doc) => {
-            if (doc.exists()) {
-              missionsData.push({ id: doc.id, ...doc.data() });
+          unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
+            const missionsData = [];
+            snapshot.forEach((doc) => {
+              if (doc.exists()) {
+                missionsData.push({ id: doc.id, ...doc.data() });
+              }
+            });
+            
+            const visibleMissions = missionsData
+              .filter(mission => !mission.userCleared && mission.status !== 'cancelled')
+              .sort((a, b) => {
+                const timeA = (a.createdAt && typeof a.createdAt.toMillis === 'function') ? a.createdAt.toMillis() : 0;
+                const timeB = (b.createdAt && typeof b.createdAt.toMillis === 'function') ? b.createdAt.toMillis() : 0;
+                return timeB - timeA;
+              });
+            
+            setMyMissions(visibleMissions);
+            setIsLoading(false);
+          }, (error) => {
+            console.error("Dashboard Listener Error: ", error);
+            setIsLoading(false);
+          });
+
+          const userRef = doc(db, 'users', user.uid);
+          unsubscribeUser = onSnapshot(userRef, (docSnap) => {
+            if (docSnap.exists()) {
+              setUserXp(docSnap.data().xpBalance || 0);
+            } else {
+              setDoc(userRef, { xpBalance: 0, lifetimeXp: 0, activeDiscounts: [] }, { merge: true });
+              setUserXp(0);
             }
           });
-          
-          const visibleMissions = missionsData
-            .filter(mission => !mission.userCleared && mission.status !== 'cancelled')
-            .sort((a, b) => {
-              const timeA = (a.createdAt && typeof a.createdAt.toMillis === 'function') ? a.createdAt.toMillis() : 0;
-              const timeB = (b.createdAt && typeof b.createdAt.toMillis === 'function') ? b.createdAt.toMillis() : 0;
-              return timeB - timeA;
-            });
-          
-          setMyMissions(visibleMissions);
+
+        } catch (err) {
+          console.error("Dashboard Setup Error: ", err);
           setIsLoading(false);
-        }, (error) => {
-          console.error("Dashboard Listener Error: ", error);
-          setIsLoading(false);
-        });
+        }
       } else {
         setUserEmail("Agent Offline");
         setMyMissions([]);
+        setUserXp(0);
         setIsLoading(false);
       }
     });
@@ -87,6 +107,7 @@ export default function DashboardScreen({ navigation }) {
     return () => {
       if (unsubscribeAuth) unsubscribeAuth();
       if (unsubscribeSnapshot) unsubscribeSnapshot();
+      if (unsubscribeUser) unsubscribeUser();
     };
   }, []);
 
@@ -94,26 +115,33 @@ export default function DashboardScreen({ navigation }) {
     const safeStatus = String(status || '').toLowerCase();
     switch (safeStatus) {
       case 'pending_pickup':
-      case 'pending': 
-        return { text: 'AWAITING PICKUP (10%)', width: '10%', color: '#FBBF24' };
-      case 'weigh_in': 
-        return { text: 'AT HQ: WEIGH-IN (30%)', width: '30%', color: '#00FFED' };
-      case 'awaiting_payment': 
-        return { text: 'AWAITING FUNDS (50%)', width: '50%', color: '#FF1493' };
-      case 'cleaning': 
-        return { text: 'CLEANING OPS (80%)', width: '80%', color: '#00FFED' };
-      case 'completed': 
-        return { text: 'MISSION COMPLETE (100%)', width: '100%', color: '#34D399' };
-      case 'cancelled': 
-        return { text: 'MISSION ABORTED', width: '0%', color: '#F87171' };
-      default: 
-        return { text: 'UNKNOWN STATUS', width: '0%', color: '#8d85b1' };
+      case 'pending': return { text: 'AWAITING PICKUP (10%)', width: '10%', color: '#FBBF24' };
+      case 'weigh_in': return { text: 'AT HQ: WEIGH-IN (30%)', width: '30%', color: '#00FFED' };
+      case 'awaiting_payment': return { text: 'AWAITING FUNDS (50%)', width: '50%', color: '#FF1493' };
+      case 'cleaning': return { text: 'CLEANING OPS (80%)', width: '80%', color: '#00FFED' };
+      case 'completed': return { text: 'MISSION COMPLETE (100%)', width: '100%', color: '#34D399' };
+      case 'cancelled': return { text: 'MISSION ABORTED', width: '0%', color: '#F87171' };
+      default: return { text: 'UNKNOWN STATUS', width: '0%', color: '#8d85b1' };
     }
   };
 
+  const userLevel = Math.floor(userXp / 500) + 1;
+  const nextLevelXp = userLevel * 500;
+  const progressPercent = Math.min((userXp / nextLevelXp) * 100, 100);
+
+  // --- STRICTLY DISCOUNTS REWARDS LOGIC ---
+  const rewardTiers = [
+    { cost: 200, name: '10% Discount', desc: 'Get 10% off your entire next laundry pickup.', icon: '🎟️', code: 'DISCOUNT_10' },
+    { cost: 400, name: '20% Discount', desc: 'Get 20% off your entire next laundry pickup.', icon: '🎫', code: 'DISCOUNT_20' },
+    { cost: 1000, name: '50% Discount', desc: 'Half price! Get 50% off your next laundry pickup.', icon: '💎', code: 'DISCOUNT_50' }
+  ];
+  
+  const nextRewardTarget = rewardTiers.find(tier => userXp < tier.cost) || rewardTiers[rewardTiers.length - 1];
+  const isMaxedOut = userXp >= rewardTiers[rewardTiers.length - 1].cost;
+  const rewardProgressPercent = isMaxedOut ? 100 : Math.min((userXp / nextRewardTarget.cost) * 100, 100);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#2D1A5B' }}>
-      {/* Logout Loading Overlay */}
       <Modal visible={isLoggingOut} transparent={true}>
         <View style={styles.loadingOverlay}>
           <ActivityIndicator size="large" color="#00FFED" />
@@ -121,42 +149,25 @@ export default function DashboardScreen({ navigation }) {
         </View>
       </Modal>
 
-      {/* Top Header */}
-      <View style={{
-        backgroundColor: '#1A0D3A', padding: isSmallPhone ? 18 : 24, paddingTop: isSmallPhone ? 50 : 48,
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        borderBottomWidth: 2, borderBottomColor: '#00FFED'
-      }}>
+      <View style={{ backgroundColor: '#1A0D3A', padding: isSmallPhone ? 18 : 24, paddingTop: isSmallPhone ? 50 : 48, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 2, borderBottomColor: '#00FFED' }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity 
-            onPress={() => setIsDropdownVisible(true)}
-            style={{
-              width: isSmallPhone ? 48 : 52, height: isSmallPhone ? 48 : 52, borderRadius: 999,
-              borderWidth: 4, borderColor: '#00FFED', backgroundColor: '#FF1493',
-              alignItems: 'center', justifyContent: 'center', marginRight: isSmallPhone ? 12 : 16,
-            }}
-          >
+          <TouchableOpacity onPress={() => setIsDropdownVisible(true)} style={{ width: isSmallPhone ? 48 : 52, height: isSmallPhone ? 48 : 52, borderRadius: 999, borderWidth: 4, borderColor: '#00FFED', backgroundColor: '#FF1493', alignItems: 'center', justifyContent: 'center', marginRight: isSmallPhone ? 12 : 16 }}>
             <Text style={{ fontSize: isSmallPhone ? 26 : 28 }}>🧑‍🚀</Text>
           </TouchableOpacity>
           <View>
-            <Text style={{ color: '#FFFFFF', fontSize: isSmallPhone ? 17.5 : 19, fontWeight: '650', letterSpacing: 0.1 }}>
-              Welcome, CAPTAIN_WASH!
-            </Text>
-            <Text style={{ color: '#00FFED', fontSize: 11, marginTop: 2, fontWeight: '700', letterSpacing: 0.5 }}>
-              {userEmail}
-            </Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
-              <Text style={{ color: '#FF1493', fontSize: isSmallPhone ? 11.5 : 12.5, fontWeight: '700' }}>Lvl 12</Text>
+            <Text style={{ color: '#FFFFFF', fontSize: isSmallPhone ? 17.5 : 19, fontWeight: '650', letterSpacing: 0.1 }}>Welcome, CAPTAIN_WASH!</Text>
+            <Text style={{ color: '#00FFED', fontSize: 11, marginTop: 2, fontWeight: '700', letterSpacing: 0.5 }}>{userEmail}</Text>
+            
+            {/* Navigates to AchievementBadgesScreen */}
+            <TouchableOpacity onPress={() => navigation.navigate('AchievementBadgesScreen')} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingVertical: 4 }}>
+              <Text style={{ color: '#FF1493', fontSize: isSmallPhone ? 11.5 : 12.5, fontWeight: '700' }}>Lvl {userLevel}</Text>
               <View style={{ width: isSmallPhone ? 68 : 75, height: 5, backgroundColor: '#334155', borderRadius: 999, marginLeft: 10, overflow: 'hidden' }}>
-                <View style={{ width: '48%', height: '100%', backgroundColor: '#FF1493' }} />
+                <View style={{ width: `${progressPercent}%`, height: '100%', backgroundColor: '#FF1493' }} />
               </View>
-              <Text style={{ color: '#FFFFFF', opacity: 0.7, fontSize: isSmallPhone ? 10.5 : 11.5, marginLeft: 8 }}>
-                1.2K / 2.5K XP
-              </Text>
-            </View>
+              <Text style={{ color: '#FFFFFF', opacity: 0.7, fontSize: isSmallPhone ? 10.5 : 11.5, marginLeft: 8 }}>{userXp} XP 🎁</Text>
+            </TouchableOpacity>
           </View>
         </View>
-
         <TouchableOpacity onPress={() => navigation.navigate('AlertComms')}>
           <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
             <Path d="M12 22C13.1046 22 14 21.1046 14 20H10C10 21.1046 10.8954 22 12 22Z" fill="#00FFED" stroke="#00FFED" strokeWidth="2" strokeLinejoin="round"/>
@@ -165,27 +176,20 @@ export default function DashboardScreen({ navigation }) {
         </TouchableOpacity>
       </View>
 
-      {/* Profile Dropdown Modal */}
       <Modal visible={isDropdownVisible} transparent={true} animationType="fade">
         <TouchableWithoutFeedback onPress={() => setIsDropdownVisible(false)}>
           <View style={styles.modalOverlay}>
             <View style={styles.dropdownContainer}>
-              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsDropdownVisible(false); navigation.navigate('HeroSpecs'); }}>
-                <Text style={styles.menuText}>Hero Specs</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={() => { setIsDropdownVisible(false); navigation.navigate('HeroSpecs'); }}><Text style={styles.menuText}>Hero Specs</Text></TouchableOpacity>
               <View style={styles.divider} />
-              <TouchableOpacity style={styles.menuItem} onPress={handleLogout}>
-                <Text style={[styles.menuText, { color: '#FF1493' }]}>Logout</Text>
-              </TouchableOpacity>
+              <TouchableOpacity style={styles.menuItem} onPress={handleLogout}><Text style={[styles.menuText, { color: '#FF1493' }]}>Logout</Text></TouchableOpacity>
             </View>
           </View>
         </TouchableWithoutFeedback>
       </Modal>
 
       <ScrollView style={{ flex: 1, paddingHorizontal: isSmallPhone ? 16 : 24, paddingTop: 24, paddingBottom: 110 }}>
-        <Text style={{ color: '#00FFED', fontSize: isSmallPhone ? 19 : 20, fontWeight: '900', letterSpacing: 1, marginBottom: 14 }}>
-          Active Missions
-        </Text>
+        <Text style={{ color: '#00FFED', fontSize: isSmallPhone ? 19 : 20, fontWeight: '900', letterSpacing: 1, marginBottom: 14 }}>Active Missions</Text>
         {isLoading ? (
           <ActivityIndicator color="#00FFED" size="large" style={{ marginVertical: 30 }} />
         ) : myMissions.length === 0 ? (
@@ -213,20 +217,37 @@ export default function DashboardScreen({ navigation }) {
             );
           })
         )}
-        <Text style={{ color: '#FF1493', fontSize: isSmallPhone ? 19 : 20, fontWeight: '900', letterSpacing: 1, marginBottom: 14 }}>Daily Quest</Text>
-        <View style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 2, borderColor: 'rgba(255,20,147,0.3)', borderRadius: 20, padding: isSmallPhone ? 16 : 20, flexDirection: 'row', alignItems: 'center' }}>
-          <Svg width={48} height={48} viewBox="0 0 24 24" fill="none" style={{ marginRight: 18 }}>
-            <Path d="M12 15C15.3137 15 18 12.3137 18 9V6C18 5.44772 17.5523 5 17 5H7C6.44772 5 6 5.44772 6 6V9C6 12.3137 8.68629 15 12 15Z" stroke="#FF1493" strokeWidth="2" strokeLinejoin="round"/>
-            <Path d="M8 19H16" stroke="#FF1493" strokeWidth="2" strokeLinecap="round"/>
-            <Path d="M12 15V19" stroke="#FF1493" strokeWidth="2" strokeLinecap="round"/>
-            <Path d="M18 9H20C20.5523 9 21 8.55228 21 8V7C21 6.44772 20.5523 6 20 6H18" stroke="#FF1493" strokeWidth="2" strokeLinejoin="round"/>
-            <Path d="M6 9H4C3.44772 9 3 8.55228 3 8V7C3 6.44772 3.44772 6 4 6H6" stroke="#FF1493" strokeWidth="2" strokeLinejoin="round"/>
-          </Svg>
-          <View>
-            <Text style={{ color: '#FFFFFF', fontSize: isSmallPhone ? 16 : 17, fontWeight: '700' }}>Wash 5 full loads</Text>
-            <Text style={{ color: '#FFFFFF', opacity: 0.65, fontSize: 14 }}>Rewards: Super Scent Bonus!</Text>
+
+        {/* --- DYNAMIC REWARDS PROGRESS TRACKER --- */}
+        <Text style={{ color: '#FF1493', fontSize: isSmallPhone ? 19 : 20, fontWeight: '900', letterSpacing: 1, marginBottom: 14 }}>Next Reward</Text>
+        
+        {/* Navigates to AchievementBadgesScreen */}
+        <TouchableOpacity 
+          onPress={() => navigation.navigate('AchievementBadgesScreen')}
+          style={{ backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 2, borderColor: 'rgba(255,20,147,0.3)', borderRadius: 20, padding: isSmallPhone ? 16 : 20 }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15 }}>
+            <View style={{ backgroundColor: 'rgba(255,20,147,0.1)', padding: 12, borderRadius: 16, marginRight: 15, borderWidth: 1, borderColor: 'rgba(255,20,147,0.3)' }}>
+              <Text style={{ fontSize: 28 }}>{nextRewardTarget.icon}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: '#FFFFFF', fontSize: isSmallPhone ? 16 : 17, fontWeight: '800' }}>{nextRewardTarget.name}</Text>
+              <Text style={{ color: '#00FFED', opacity: 0.9, fontSize: 13, marginTop: 4, fontWeight: '700' }}>
+                {isMaxedOut ? "All base discounts affordable!" : `${nextRewardTarget.cost - userXp} XP to unlock`}
+              </Text>
+            </View>
           </View>
-        </View>
+          
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <View style={{ flex: 1, height: 8, backgroundColor: '#334155', borderRadius: 999, overflow: 'hidden' }}>
+              <View style={{ width: `${rewardProgressPercent}%`, height: '100%', backgroundColor: '#FF1493' }} />
+            </View>
+            <Text style={{ color: '#FFFFFF', opacity: 0.7, fontSize: 12, marginLeft: 12, fontWeight: '700' }}>
+              {userXp} / {nextRewardTarget.cost}
+            </Text>
+          </View>
+        </TouchableOpacity>
+
         <TouchableOpacity style={{ marginTop: 36, backgroundColor: '#00FFED', paddingVertical: isSmallPhone ? 16 : 20, borderRadius: 999, alignItems: 'center', borderBottomWidth: 6, borderBottomColor: '#00C2B4' }} onPress={() => navigation.navigate('PickupQuest')}>
           <Text style={{ color: '#1A0D3A', fontSize: isSmallPhone ? 18 : 20, fontWeight: '900', letterSpacing: 1 }}>NEW PICKUP QUEST</Text>
         </TouchableOpacity>
@@ -236,7 +257,15 @@ export default function DashboardScreen({ navigation }) {
       <View style={{ position: 'absolute', bottom: 12, left: 12, right: 12, backgroundColor: '#1A0D3A', borderWidth: 2, borderColor: 'rgba(0,255,237,0.6)', borderRadius: 999, padding: 10, flexDirection: 'row', justifyContent: 'space-around' }}>
         <TouchableOpacity style={{ alignItems: 'center', flex: 1 }} onPress={() => navigation.navigate('Dashboard')}><Svg width={28} height={28} viewBox="0 0 24 24" fill="none"><Path d="M3 9L12 2L21 9V20C21 20.5304 20.7893 21.0391 20.4142 21.4142C20.0391 21.7893 19.5304 22 19 22H5C4.46957 22 3.96086 21.7893 3.58579 21.4142C3.21071 21.0391 3 20.5304 3 20V9Z" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><Path d="M9 22V12H15V22" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg><Text style={{ color: '#00FFED', fontSize: 10, fontWeight: '700', marginTop: 2 }}>HOME</Text></TouchableOpacity>
         <TouchableOpacity style={{ alignItems: 'center', flex: 1, opacity: 0.6 }} onPress={() => navigation.navigate('PickupQuest')}><Svg width={28} height={28} viewBox="0 0 24 24" fill="none"><Path d="M19 11H5M19 11C20.1046 11 21 11.8954 21 13V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V13C3 11.8954 3.89543 11 5 11M19 11V9C19 7.89543 18.1046 7 17 7H7C5.89543 7 5 7.89543 5 9V11" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg><Text style={{ color: '#FFFFFF', fontSize: 10, marginTop: 2 }}>QUEST</Text></TouchableOpacity>
-        <TouchableOpacity style={{ alignItems: 'center', flex: 1, opacity: 0.6 }} onPress={() => navigation.navigate('CommandCenter')}><Svg width={28} height={28} viewBox="0 0 24 24" fill="none"><Path d="M13 2L3 14H11L10 22L20 10H12L13 2Z" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg><Text style={{ color: '#FFFFFF', fontSize: 10, marginTop: 2 }}>HQ</Text></TouchableOpacity>
+        
+        {/* --- CHANGED: HQ TO REWARDS --- */}
+        <TouchableOpacity style={{ alignItems: 'center', flex: 1, opacity: 0.6 }} onPress={() => navigation.navigate('AchievementBadgesScreen')}>
+          <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
+            <Path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+          </Svg>
+          <Text style={{ color: '#FFFFFF', fontSize: 10, marginTop: 2 }}>REWARDS</Text>
+        </TouchableOpacity>
+
         <TouchableOpacity style={{ alignItems: 'center', flex: 1, opacity: 0.6 }} onPress={() => navigation.navigate('HeroSpecs')}><Svg width={28} height={28} viewBox="0 0 24 24" fill="none"><Path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/><Circle cx="12" cy="7" r="4" stroke="#FFFFFF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></Svg><Text style={{ color: '#FFFFFF', fontSize: 10, marginTop: 2 }}>SPECS</Text></TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -245,10 +274,7 @@ export default function DashboardScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)' },
-  dropdownContainer: { 
-    position: 'absolute', top: 100, left: 20, backgroundColor: '#1A0D3A', 
-    borderRadius: 15, padding: 10, width: 160, borderWidth: 1, borderColor: '#00FFED' 
-  },
+  dropdownContainer: { position: 'absolute', top: 100, left: 20, backgroundColor: '#1A0D3A', borderRadius: 15, padding: 10, width: 160, borderWidth: 1, borderColor: '#00FFED' },
   menuItem: { paddingVertical: 10, paddingHorizontal: 5 },
   menuText: { color: '#FFFFFF', fontSize: 16, fontWeight: '700' },
   divider: { height: 1, backgroundColor: 'rgba(0,255,237,0.2)' },
