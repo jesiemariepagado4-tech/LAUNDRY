@@ -21,6 +21,9 @@ import AlertCommsScreen from './screens/AlertCommsScreen';
 import AchievementBadgesScreen from './screens/AchievementBadgesScreen';
 import MissionHistoryScreen from './screens/MissionHistoryScreen';
 import DeactivateProfileScreen from './screens/DeactivateProfileScreen';
+import AdminActiveMissionsScreen from './screens/AdminActiveMissionsScreen';
+import AdminFinanceScreen from './screens/AdminFinanceScreen';
+import AdminRewardsScreen from './screens/AdminRewardsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -90,10 +93,14 @@ export default function App() {
           <Stack.Screen name="CommandCenter" component={CommandCenterScreen} />
           <Stack.Screen name="AlertComms" component={AlertCommsScreen} />
           
-          {/* --- FIXED: Name perfectly matches the navigation call in Dashboard --- */}
           <Stack.Screen name="AchievementBadgesScreen" component={AchievementBadgesScreen} />
           <Stack.Screen name="MissionHistory" component={MissionHistoryScreen} />
           <Stack.Screen name="DeactivateProfile" component={DeactivateProfileScreen} />
+
+          <Stack.Screen name="AdminActiveMissions" component={AdminActiveMissionsScreen} />
+          <Stack.Screen name="AdminFinance" component={AdminFinanceScreen} />
+          <Stack.Screen name="AdminArchives" component={CommandCenterScreen} />
+          <Stack.Screen name="AdminRewards" component={AdminRewardsScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>
