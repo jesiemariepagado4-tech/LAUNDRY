@@ -24,6 +24,7 @@ import DeactivateProfileScreen from './screens/DeactivateProfileScreen';
 import AdminActiveMissionsScreen from './screens/AdminActiveMissionsScreen';
 import AdminFinanceScreen from './screens/AdminFinanceScreen';
 import AdminRewardsScreen from './screens/AdminRewardsScreen';
+import UserManagementScreen from './screens/UserManagementScreen';   // ← Added
 
 const Stack = createNativeStackNavigator();
 
@@ -31,11 +32,10 @@ export default function App() {
   const [initialRoute, setInitialRoute] = useState('Login');
   const [isReady, setIsReady] = useState(false);
 
-  // ✅ Administrative Authorization Email (Matches your Snack format)
+  // ✅ Administrative Authorization Email
   const ADMIN_EMAIL = "admin@gmail.com";
 
   useEffect(() => {
-    // 1. Instantly check local storage when the app opens
     const checkAuthStatus = async () => {
       try {
         const storedSession = await AsyncStorage.getItem('@user_session');
@@ -43,8 +43,6 @@ export default function App() {
         if (storedSession) {
           const userData = JSON.parse(storedSession);
           
-          // ✅ AUTOMATIC ROUTING FOR ADMIN
-          // If the email matches the admin, set 'CommandCenter' as the starting screen
           if (userData.email === ADMIN_EMAIL) {
             setInitialRoute('CommandCenter');
           } else {
@@ -60,7 +58,6 @@ export default function App() {
 
     checkAuthStatus();
 
-    // 2. Keep Firebase synced in the background
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
         await AsyncStorage.setItem('@user_session', JSON.stringify(firebaseUser));
@@ -101,6 +98,9 @@ export default function App() {
           <Stack.Screen name="AdminFinance" component={AdminFinanceScreen} />
           <Stack.Screen name="AdminArchives" component={CommandCenterScreen} />
           <Stack.Screen name="AdminRewards" component={AdminRewardsScreen} />
+          
+          {/* ✅ Added User Management Screen */}
+          <Stack.Screen name="UserManagement" component={UserManagementScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </SafeAreaProvider>

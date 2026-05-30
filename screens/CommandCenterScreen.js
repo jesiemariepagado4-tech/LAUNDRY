@@ -6,13 +6,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Svg, Path } from 'react-native-svg';
 
 // --- FIREBASE & STORAGE IMPORTS ---
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth'; 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db, auth } from '../config/firebase';
 
 export default function CommandCenterScreen({ navigation }) {
   const [stats, setStats] = useState({ total: 0, active: 0, completed: 0 });
+  const [bannedCount, setBannedCount] = useState(0);
+  const [onlineUsers, setOnlineUsers] = useState([]);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   // --- FETCH GLOBAL STATS ---
@@ -35,23 +37,88 @@ export default function CommandCenterScreen({ navigation }) {
     return () => unsubscribe();
   }, []);
 
-  // --- LOGOUT FUNCTION ---
-  const handleLogout = async () => {
-    setIsLoggingOut(true); 
+  // --- FETCH BANNED USERS COUNT ---
+  useEffect(() => {
+    const unsubscribeUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      let count = 0;
+      snapshot.forEach((doc) => {
+        const userData = doc.data();
+        if (userData.banned === true || userData.status === 'banned') {
+          count++;
+        }
+      });
+      setBannedCount(count);
+    });
 
-    setTimeout(async () => {
-      try {
-        await signOut(auth);
-        await AsyncStorage.removeItem('@user_session');
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Login' }],
+    return () => unsubscribeUsers();
+  }, []);
+
+  // --- FETCH CURRENTLY LOGGED-IN USERS ---
+  useEffect(() => {
+    const unsubscribeOnline = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const online = [];
+      snapshot.forEach((docSnap) => {
+        const userData = docSnap.data();
+        if (userData.isOnline === true) {
+          online.push({
+            id: docSnap.id,
+            ...userData
+          });
+        }
+      });
+      setOnlineUsers(online);
+    });
+
+    return () => unsubscribeOnline();
+  }, []);
+
+  // --- BAN USER FUNCTION ---
+  const banUser = async (userId, reason = "Violation") => {
+    try {
+      await updateDoc(doc(db, 'users', userId), {
+        banned: true,
+        banReason: reason,
+        bannedAt: new Date()
+      });
+      alert(`User ${userId} has been banned.`);
+    } catch (error) {
+      console.error("Ban Error:", error);
+      alert("Failed to ban user.");
+    }
+  };
+
+  // --- IMPROVED LOGOUT FUNCTION ---
+  const handleLogout = async () => {
+    setIsLoggingOut(true);
+
+    try {
+      const user = auth.currentUser;
+      
+      // Set user as offline in Firestore
+      if (user) {
+        await updateDoc(doc(db, 'users', user.uid), { 
+          isOnline: false 
         });
-      } catch (error) {
-        console.error("Logout Error:", error);
-        setIsLoggingOut(false);
       }
-    }, 3000);
+
+      // Sign out from Firebase
+      await signOut(auth);
+      
+      // Clear local session
+      await AsyncStorage.removeItem('@user_session');
+
+      // Reset navigation to Login screen
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+
+    } catch (error) {
+      console.error("Logout Error:", error);
+      alert("Logout failed. Please try again.");
+    } finally {
+      setIsLoggingOut(false);
+    }
   };
 
   return (
@@ -92,10 +159,6 @@ export default function CommandCenterScreen({ navigation }) {
         {/* ANALYTICS OVERVIEW */}
         <Text style={styles.sectionTitle}>SYSTEM OVERVIEW</Text>
         <View style={styles.analyticsBox}>
-          <Text style={{ fontSize: 40, marginBottom: 10 }}>📊</Text>
-          <Text style={{ color: '#00FFED', fontWeight: 'bold', fontSize: 16 }}>ANALYTICS MODULE OFFLINE</Text>
-          <Text style={{ color: '#8d85b1', fontSize: 12, marginTop: 4 }}>Awaiting deployment of visual graphs.</Text>
-          
           <View style={styles.statsRow}>
             <View style={styles.statItem}>
               <Text style={styles.statNumber}>{stats.active}</Text>
@@ -121,7 +184,11 @@ export default function CommandCenterScreen({ navigation }) {
             style={styles.gridCard}
             onPress={() => navigation.navigate('AdminActiveMissions')}
           >
-            <Text style={styles.cardIcon}>🚀</Text>
+            <Svg width={40} height={40} viewBox="0 0 24 24" fill="none" style={{ marginBottom: 12 }}>
+              <Path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <Path d="M2 17L12 22L22 17" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <Path d="M2 12L12 17L22 12" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </Svg>
             <Text style={styles.cardTitle}>Active Ops</Text>
             <Text style={styles.cardDesc}>Manage & update ongoing missions</Text>
           </TouchableOpacity>
@@ -131,20 +198,68 @@ export default function CommandCenterScreen({ navigation }) {
             style={styles.gridCard}
             onPress={() => navigation.navigate('AdminFinance')}
           >
-            <Text style={styles.cardIcon}>💳</Text>
+            <Svg width={40} height={40} viewBox="0 0 24 24" fill="none" style={{ marginBottom: 12 }}>
+              <Path d="M17 21V19C17 17.8954 16.1046 17 15 17H9C7.89543 17 7 17.8954 7 19V21" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <Path d="M3 7H21" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <Path d="M3 11H21" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <Path d="M12 3V7" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <Path d="M7 21H17" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </Svg>
             <Text style={styles.cardTitle}>Financials</Text>
             <Text style={styles.cardDesc}>Process billing and verify payments</Text>
           </TouchableOpacity>
 
-          {/* 3. Archives */}
+          {/* 3. User Management */}
           <TouchableOpacity 
-            style={[styles.gridCard, { width: '100%' }]} 
+            style={styles.gridCard}
+            onPress={() => navigation.navigate('UserManagement')}
+          >
+            <Svg width={40} height={40} viewBox="0 0 24 24" fill="none" style={{ marginBottom: 12 }}>
+              <Path d="M12 4C9.79086 4 8 5.79086 8 8C8 10.2091 9.79086 12 12 12C14.2091 12 16 10.2091 16 8C16 5.79086 14.2091 4 12 4Z" stroke="#00FFED" strokeWidth="2"/>
+              <Path d="M4 20C4 16.6863 7.58172 14 12 14C16.4183 14 20 16.6863 20 20" stroke="#00FFED" strokeWidth="2"/>
+              <Path d="M19 8L21 10L19 12" stroke="#FF1493" strokeWidth="2" strokeLinecap="round"/>
+            </Svg>
+            <Text style={styles.cardTitle}>User Management</Text>
+            <Text style={styles.cardDesc}>Create, Read, Ban, Delete, Edit</Text>
+          </TouchableOpacity>
+
+          {/* 4. Archives */}
+          <TouchableOpacity 
+            style={styles.gridCard}
             onPress={() => navigation.navigate('AdminArchives')}
           >
-            <Text style={styles.cardIcon}>🗄️</Text>
+            <Svg width={40} height={40} viewBox="0 0 24 24" fill="none" style={{ marginBottom: 12 }}>
+              <Path d="M4 6H20" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <Path d="M4 10H20" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <Path d="M4 14H20" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <Path d="M4 18H20" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <Path d="M14 3V21" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              <Path d="M10 3V21" stroke="#00FFED" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+            </Svg>
             <Text style={styles.cardTitle}>Mission Archives</Text>
             <Text style={styles.cardDesc}>View historical data of completed and aborted deployments</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* CURRENTLY LOGGED-IN USERS */}
+        <Text style={styles.sectionTitle}>CURRENTLY ONLINE ({onlineUsers.length})</Text>
+        <View style={styles.onlineContainer}>
+          {onlineUsers.length > 0 ? (
+            onlineUsers.map((user) => (
+              <View key={user.id} style={styles.onlineUserCard}>
+                <Text style={{ color: '#00FFED', fontWeight: 'bold' }}>
+                  {user.heroName || user.displayName || user.email || 'Anonymous User'}
+                </Text>
+                <Text style={{ color: '#8d85b1', fontSize: 12 }}>
+                  ID: {user.id?.slice(0,8)}...
+                </Text>
+              </View>
+            ))
+          ) : (
+            <Text style={{ color: '#8d85b1', textAlign: 'center', padding: 20 }}>
+              No users currently online
+            </Text>
+          )}
         </View>
 
       </ScrollView>
@@ -167,11 +282,38 @@ const styles = StyleSheet.create({
   statNumber: { color: '#00FFED', fontSize: 24, fontWeight: '900' },
   statLabel: { color: '#8d85b1', fontSize: 11, fontWeight: 'bold', marginTop: 4, letterSpacing: 1 },
 
-  gridContainer: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  gridCard: { width: '48%', backgroundColor: 'rgba(255,255,255,0.05)', borderWidth: 1, borderColor: '#475569', borderRadius: 20, padding: 16, marginBottom: 16 },
-  cardIcon: { fontSize: 32, marginBottom: 12 },
+  gridContainer: { 
+    flexDirection: 'row', 
+    flexWrap: 'wrap', 
+    justifyContent: 'space-between' 
+  },
+  gridCard: { 
+    width: '48%', 
+    backgroundColor: 'rgba(255,255,255,0.05)', 
+    borderWidth: 1, 
+    borderColor: '#475569', 
+    borderRadius: 20, 
+    padding: 16, 
+    marginBottom: 16, 
+    alignItems: 'center' 
+  },
   cardTitle: { color: '#fff', fontSize: 15, fontWeight: 'bold', marginBottom: 4 },
   cardDesc: { color: '#8d85b1', fontSize: 11, lineHeight: 16 },
+
+  onlineContainer: {
+    backgroundColor: '#111820',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 237, 0.2)',
+    borderRadius: 16,
+    padding: 16,
+    marginTop: 10,
+  },
+  onlineUserCard: {
+    backgroundColor: 'rgba(0, 255, 237, 0.1)',
+    padding: 12,
+    borderRadius: 12,
+    marginBottom: 8,
+  },
 
   loadingOverlay: { flex: 1, backgroundColor: '#2D1A5B', justifyContent: 'center', alignItems: 'center' },
   loadingText: { color: '#00FFED', marginTop: 15, fontSize: 16, fontWeight: '700', letterSpacing: 1 }
