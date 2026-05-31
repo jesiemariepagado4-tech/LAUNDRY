@@ -5,8 +5,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Svg, Path } from 'react-native-svg';
 
-// --- FIREBASE & STORAGE IMPORTS ---
-import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+// --- FIXED IMPORT: Added setDoc ---
+import { collection, onSnapshot, doc, updateDoc, setDoc } from 'firebase/firestore';
 import { signOut } from 'firebase/auth'; 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db, auth } from '../config/firebase';
@@ -87,18 +87,18 @@ export default function CommandCenterScreen({ navigation }) {
     }
   };
 
-  // --- IMPROVED LOGOUT FUNCTION ---
+  // --- FIXED LOGOUT FUNCTION ---
   const handleLogout = async () => {
     setIsLoggingOut(true);
 
     try {
       const user = auth.currentUser;
       
-      // Set user as offline in Firestore
+      // Set user as offline in Firestore safely using setDoc + merge
       if (user) {
-        await updateDoc(doc(db, 'users', user.uid), { 
+        await setDoc(doc(db, 'users', user.uid), { 
           isOnline: false 
-        });
+        }, { merge: true });
       }
 
       // Sign out from Firebase
@@ -298,7 +298,7 @@ const styles = StyleSheet.create({
     alignItems: 'center' 
   },
   cardTitle: { color: '#fff', fontSize: 15, fontWeight: 'bold', marginBottom: 4 },
-  cardDesc: { color: '#8d85b1', fontSize: 11, lineHeight: 16 },
+  cardDesc: { color: '#8d85b1', fontSize: 11, lineHeight: 16, textAlign: 'center' },
 
   onlineContainer: {
     backgroundColor: '#111820',

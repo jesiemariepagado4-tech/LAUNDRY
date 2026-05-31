@@ -13,12 +13,16 @@ import { db } from '../config/firebase';
 export default function AdminActiveMissionsScreen({ navigation }) {
   const [activeMissions, setActiveMissions] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // --- NEW: TAB FILTERING STATE ---
+  const [activeTab, setActiveTab] = useState('All');
 
   // --- ADMIN MODAL STATE ---
   const [selectedMission, setSelectedMission] = useState(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
   const [editStatus, setEditStatus] = useState('');
-  const [editPrice, setEditPrice] = useState('');
+  const [editPrice, setEditPrice] = useState(''); // Admin types BASE price here
+  const [editWeight, setEditWeight] = useState(''); 
   const [isUpdating, setIsUpdating] = useState(false);
 
   // --- FETCH ONLY ACTIVE MISSIONS ---
@@ -30,13 +34,13 @@ export default function AdminActiveMissionsScreen({ navigation }) {
         missionsData.push({ id: docSnap.id, ...docSnap.data() });
       });
       
-      // Filter out completed and cancelled missions, then sort
+      // Filter out delivered and cancelled missions
       const filteredMissions = missionsData
-        .filter(m => m.status !== 'completed' && m.status !== 'cancelled')
+        .filter(m => m.status !== 'delivered' && m.status !== 'completed' && m.status !== 'cancelled')
         .sort((a, b) => {
           const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
           const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
-          return timeB - timeA; // Oldest first (needs most attention)
+          return timeB - timeA; 
         });
 
       setActiveMissions(filteredMissions);
@@ -53,18 +57,32 @@ export default function AdminActiveMissionsScreen({ navigation }) {
   const openAdminModal = (mission) => {
     setSelectedMission(mission);
     setEditStatus(mission.status || 'pending_pickup');
-    setEditPrice(mission.finalPrice ? String(mission.finalPrice) : '');
+    // Load base price if it exists, otherwise leave blank
+    setEditPrice(mission.basePrice ? String(mission.basePrice) : '');
+    setEditWeight(mission.weight ? String(mission.weight) : '');
     setIsModalVisible(true);
   };
 
+  // --- REWARDS MATH INTEGRATION ---
   const handleAdminUpdate = async () => {
     if (!selectedMission) return;
     setIsUpdating(true);
 
+    let base = editPrice ? parseFloat(editPrice) : null;
+    let finalCalculated = base;
+
+    // If the mission has an applied discount ticket from the user, auto-calculate it!
+    if (base && selectedMission.appliedDiscount) {
+      const discountAmount = base * (selectedMission.appliedDiscount / 100);
+      finalCalculated = base - discountAmount;
+    }
+
     try {
       await updateDoc(doc(db, 'missions', selectedMission.id), {
         status: editStatus,
-        finalPrice: editPrice ? parseFloat(editPrice) : null
+        basePrice: base,                  // What the admin typed
+        finalPrice: finalCalculated,      // What the user actually pays
+        weight: editWeight ? parseFloat(editWeight) : null
       });
       
       Alert.alert("Override Successful", "Mission workflow updated.");
@@ -77,13 +95,31 @@ export default function AdminActiveMissionsScreen({ navigation }) {
     }
   };
 
-  // Status mapping for UI clarity
+  // --- TAB & WORKFLOW OPTIONS ---
+  const FILTER_TABS = [
+    { id: 'All', label: 'ALL OPS' },
+    { id: 'pending_pickup', label: 'PENDING' },
+    { id: 'weigh_in', label: 'WEIGH-IN' },
+    { id: 'washing', label: 'WASHING' },
+    { id: 'ready_for_delivery', label: 'READY' },
+    { id: 'otw', label: 'ON THE WAY' }
+  ];
+
   const STATUS_OPTIONS = [
     { id: 'pending_pickup', label: '1. Pending Pickup' },
-    { id: 'weigh_in', label: '2. Weigh-In' },
-    { id: 'awaiting_payment', label: '3. Awaiting Payment' },
-    { id: 'cleaning', label: '4. Cleaning Ops' }
+    { id: 'weigh_in', label: '2. HQ Weigh-In & Bill' },
+    { id: 'washing', label: '3. Washing Ops' },
+    { id: 'ready_for_delivery', label: '4. Folded & Ready' },
+    { id: 'otw', label: '5. On The Way (OTW)' },
+    { id: 'delivered', label: '6. Delivered (Archives)' }
   ];
+
+  // Apply the selected tab filter
+  const displayedMissions = activeMissions.filter(m => {
+    if (activeTab === 'All') return true;
+    if (activeTab === 'pending_pickup') return m.status === 'pending_pickup' || m.status === 'pending';
+    return m.status === activeTab;
+  });
 
   return (
     <SafeAreaView style={styles.container}>
@@ -98,27 +134,62 @@ export default function AdminActiveMissionsScreen({ navigation }) {
         <Text style={styles.headerTitle}>Active Operations</Text>
       </View>
 
+      {/* --- SCROLLABLE FILTER TABS --- */}
+      <View style={{ paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 20, gap: 10 }}>
+          {FILTER_TABS.map((tab) => (
+            <TouchableOpacity 
+              key={tab.id}
+              style={[
+                styles.tabButton, 
+                activeTab === tab.id && styles.tabButtonActive
+              ]}
+              onPress={() => setActiveTab(tab.id)}
+            >
+              <Text style={[styles.tabText, activeTab === tab.id && { color: '#00FFED' }]}>
+                {tab.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      </View>
+
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {isLoading ? (
           <ActivityIndicator color="#00FFED" size="large" style={{ marginTop: 50 }} />
-        ) : activeMissions.length > 0 ? (
-          activeMissions.map((mission) => (
+        ) : displayedMissions.length > 0 ? (
+          displayedMissions.map((mission) => (
             <View key={mission.id} style={styles.missionCard}>
               <View style={styles.missionInfo}>
                 <Text style={styles.missionIdName}>{mission.missionId || mission.id}</Text>
-                <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 4, fontSize: 16 }}>
-                  {mission.serviceType || 'Standard'}
-                </Text>
+                
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold', marginBottom: 4, fontSize: 16, marginRight: 8 }}>
+                    {mission.serviceType || 'Standard'}
+                  </Text>
+                  {/* Shows Admin if a discount is attached */}
+                  {mission.appliedDiscount && (
+                    <Text style={{ backgroundColor: '#FF1493', color: '#fff', fontSize: 10, fontWeight: 'bold', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, marginBottom: 4 }}>
+                      -{mission.appliedDiscount}% REWARD
+                    </Text>
+                  )}
+                </View>
+
                 <Text style={styles.missionDetails} numberOfLines={2}>📍 {mission.address || 'Zone Unknown'}</Text>
                 
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 10 }}>
-                  <Text style={[styles.statusBadge, { color: mission.status === 'awaiting_payment' ? '#FF1493' : '#00FFED', borderColor: mission.status === 'awaiting_payment' ? 'rgba(255,20,147,0.4)' : 'rgba(0,255,237,0.4)' }]}>
-                    {String(mission.status || 'pending').replace('_', ' ').toUpperCase()}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 10, flexWrap: 'wrap' }}>
+                  <Text style={[styles.statusBadge, { color: mission.status === 'weigh_in' ? '#FF1493' : '#00FFED', borderColor: mission.status === 'weigh_in' ? 'rgba(255,20,147,0.4)' : 'rgba(0,255,237,0.4)' }]}>
+                    {String(mission.status || 'pending').replace(/_/g, ' ').toUpperCase()}
                   </Text>
+                  
+                  {mission.weight && (
+                     <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 12, opacity: 0.8 }}>⚖️ {mission.weight}kg</Text>
+                  )}
                   {mission.finalPrice && (
-                    <Text style={{ color: '#00FF88', fontWeight: 'bold', fontSize: 13 }}>
-                      ₱{mission.finalPrice}
-                    </Text>
+                    <Text style={{ color: '#00FF88', fontWeight: 'bold', fontSize: 12 }}>₱{mission.finalPrice}</Text>
+                  )}
+                  {mission.paymentMethod && (
+                    <Text style={{ color: '#FFD700', fontWeight: 'bold', fontSize: 12 }}>({mission.paymentMethod.toUpperCase()})</Text>
                   )}
                 </View>
               </View>
@@ -130,9 +201,9 @@ export default function AdminActiveMissionsScreen({ navigation }) {
           ))
         ) : (
           <View style={{ alignItems: 'center', marginTop: 50 }}>
-            <Text style={{ fontSize: 50, marginBottom: 10 }}>🧘</Text>
-            <Text style={{ color: '#00FFED', fontSize: 18, fontWeight: 'bold' }}>All clear, Captain.</Text>
-            <Text style={{ color: '#8d85b1', marginTop: 5 }}>No active missions requiring attention.</Text>
+            <Text style={{ fontSize: 50, marginBottom: 10 }}>📭</Text>
+            <Text style={{ color: '#00FFED', fontSize: 18, fontWeight: 'bold' }}>No operations found.</Text>
+            <Text style={{ color: '#8d85b1', marginTop: 5 }}>There are no missions in this category.</Text>
           </View>
         )}
       </ScrollView>
@@ -142,23 +213,43 @@ export default function AdminActiveMissionsScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <Text style={styles.modalTitle}>⚡ MISSION OVERRIDE</Text>
-            
-            {selectedMission && (
-              <View style={{ marginBottom: 20, padding: 12, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 12, borderWidth: 1, borderColor: '#475569' }}>
-                <Text style={{ color: '#00FFED', fontWeight: 'bold', marginBottom: 4 }}>{selectedMission.missionId}</Text>
-                <Text style={{ color: '#fff', fontSize: 13, marginBottom: 4 }}>User: {selectedMission.userEmail || 'Unknown'}</Text>
+
+            {/* NEW: NOTIFY ADMIN OF DISCOUNT */}
+            {selectedMission?.appliedDiscount && (
+              <View style={{ backgroundColor: 'rgba(255,20,147,0.1)', padding: 12, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: '#FF1493' }}>
+                <Text style={{ color: '#FF1493', fontWeight: 'bold', textAlign: 'center', fontSize: 12, letterSpacing: 0.5 }}>
+                  🎟️ AGENT HAS A {selectedMission.appliedDiscount}% DISCOUNT TICKET
+                </Text>
+                <Text style={{ color: '#fff', opacity: 0.7, textAlign: 'center', fontSize: 11, marginTop: 4 }}>
+                  Enter the normal base price below. The system will auto-calculate the final discounted bill.
+                </Text>
               </View>
             )}
-
-            <Text style={styles.inputLabel}>SET BILLING PRICE (PHP)</Text>
-            <TextInput 
-              style={styles.textInput} 
-              value={editPrice} 
-              onChangeText={setEditPrice} 
-              placeholder="e.g. 450.00"
-              placeholderTextColor="#475569"
-              keyboardType="numeric"
-            />
+            
+            <View style={{ flexDirection: 'row', gap: 15, marginBottom: 20 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>WEIGHT (KG)</Text>
+                <TextInput 
+                  style={styles.textInput} 
+                  value={editWeight} 
+                  onChangeText={setEditWeight} 
+                  placeholder="e.g. 5.2"
+                  placeholderTextColor="#475569"
+                  keyboardType="numeric"
+                />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.inputLabel}>BASE PRICE (₱)</Text>
+                <TextInput 
+                  style={styles.textInput} 
+                  value={editPrice} 
+                  onChangeText={setEditPrice} 
+                  placeholder="e.g. 450"
+                  placeholderTextColor="#475569"
+                  keyboardType="numeric"
+                />
+              </View>
+            </View>
 
             <Text style={styles.inputLabel}>UPDATE WORKFLOW STATUS</Text>
             <View style={{ gap: 8, marginBottom: 24 }}>
@@ -198,9 +289,15 @@ export default function AdminActiveMissionsScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000000' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingTop: 20, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)' },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingTop: 20, paddingBottom: 15 },
   backButton: { marginRight: 15 },
   headerTitle: { color: '#00FFED', fontSize: 24, fontWeight: '900', fontStyle: 'italic', letterSpacing: 1 },
+  
+  // Tab Styles
+  tabButton: { paddingVertical: 10, paddingHorizontal: 16, borderRadius: 20, borderWidth: 1, borderColor: '#475569', backgroundColor: 'rgba(255,255,255,0.05)' },
+  tabButtonActive: { borderColor: '#00FFED', backgroundColor: 'rgba(0,255,237,0.1)' },
+  tabText: { color: '#8d85b1', fontSize: 12, fontWeight: 'bold', letterSpacing: 0.5 },
+
   scrollContent: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40 },
   
   missionCard: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: '#111820', borderWidth: 2, borderColor: 'rgba(0, 255, 237, 0.4)', borderRadius: 20, padding: 20, marginBottom: 16 },
@@ -217,8 +314,8 @@ const styles = StyleSheet.create({
   modalContainer: { backgroundColor: '#111820', borderTopLeftRadius: 30, borderTopRightRadius: 30, padding: 24, borderWidth: 2, borderColor: '#00FFED', borderBottomWidth: 0 },
   modalTitle: { color: '#00FFED', fontSize: 20, fontWeight: '900', fontStyle: 'italic', marginBottom: 20 },
   inputLabel: { color: '#FF1493', fontSize: 11, fontWeight: '900', letterSpacing: 1, marginBottom: 8 },
-  textInput: { backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: '#475569', borderRadius: 12, padding: 14, color: '#fff', fontSize: 16, marginBottom: 20, fontWeight: 'bold' },
-  statusBtn: { padding: 14, borderRadius: 12, borderWidth: 1, borderColor: '#475569', backgroundColor: 'rgba(255,255,255,0.03)' },
+  textInput: { backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: '#475569', borderRadius: 12, padding: 14, color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  statusBtn: { padding: 12, borderRadius: 12, borderWidth: 1, borderColor: '#475569', backgroundColor: 'rgba(255,255,255,0.03)' },
   statusBtnActive: { borderColor: '#00FFED', backgroundColor: 'rgba(0,255,237,0.1)' },
   statusBtnText: { color: '#8d85b1', fontWeight: 'bold', fontSize: 14 },
   modalButtonRow: { flexDirection: 'row', gap: 12, marginTop: 10 },

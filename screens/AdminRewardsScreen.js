@@ -8,6 +8,7 @@ import { db } from '../config/firebase';
 export default function AdminRewardsScreen({ navigation }) {
   const [users, setUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isUpdating, setIsUpdating] = useState(false);
   
   const [selectedUser, setSelectedUser] = useState(null);
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -28,17 +29,34 @@ export default function AdminRewardsScreen({ navigation }) {
 
   const handleGrantXp = async () => {
     if (!selectedUser || !bonusXp) return;
+    
+    const xpAmount = parseInt(bonusXp, 10);
+    if (isNaN(xpAmount) || xpAmount <= 0) {
+      Alert.alert("Invalid Amount", "Please enter a valid number of XP.");
+      return;
+    }
+
+    setIsUpdating(true);
     try {
-      await updateDoc(doc(db, 'users', selectedMission.id), {
-        xpBalance: increment(parseInt(bonusXp)),
-        lifetimeXp: increment(parseInt(bonusXp))
+      // FIXED: Uses selectedUser.id instead of selectedMission
+      await updateDoc(doc(db, 'users', selectedUser.id), {
+        xpBalance: increment(xpAmount),
+        lifetimeXp: increment(xpAmount)
       });
-      Alert.alert("XP Granted", `Successfully added ${bonusXp} XP to Agent.`);
+      Alert.alert("XP Granted", `Successfully added ${xpAmount} XP to Agent.`);
       setIsModalVisible(false);
       setBonusXp('');
     } catch (error) {
       Alert.alert("Error", "Could not grant XP.");
+    } finally {
+      setIsUpdating(false);
     }
+  };
+
+  const openGrantModal = (user) => {
+    setSelectedUser(user);
+    setBonusXp('');
+    setIsModalVisible(true);
   };
 
   return (
@@ -57,9 +75,12 @@ export default function AdminRewardsScreen({ navigation }) {
             <View style={styles.userInfo}>
               <Text style={styles.userEmail}>AGENT: {user.id.substring(0, 8).toUpperCase()}</Text>
               <Text style={{ color: '#00FFED', fontSize: 24, fontWeight: '900' }}>{user.xpBalance || 0} XP</Text>
-              <Text style={{ color: '#8d85b1', fontSize: 11 }}>Active Discounts: {(user.activeDiscounts || []).length}</Text>
+              {/* FIXED: Displays the single active discount ticket format correctly */}
+              <Text style={{ color: '#8d85b1', fontSize: 11, marginTop: 4 }}>
+                Active Discount: <Text style={{color: '#FF1493', fontWeight: 'bold'}}>{user.activeDiscount ? `${user.activeDiscount}%` : 'None'}</Text>
+              </Text>
             </View>
-            <TouchableOpacity style={styles.grantButton} onPress={() => { setSelectedUser(user); setIsModalVisible(true); }}>
+            <TouchableOpacity style={styles.grantButton} onPress={() => openGrantModal(user)}>
               <Text style={styles.grantButtonText}>+ GRANT XP</Text>
             </TouchableOpacity>
           </View>
@@ -70,10 +91,27 @@ export default function AdminRewardsScreen({ navigation }) {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContainer}>
             <Text style={styles.modalTitle}>GRANT BONUS XP</Text>
-            <TextInput style={styles.textInput} value={bonusXp} onChangeText={setBonusXp} placeholder="e.g. 500" placeholderTextColor="#475569" keyboardType="numeric" />
+            
+            <Text style={{ color: '#8d85b1', textAlign: 'center', marginBottom: 15, fontSize: 12 }}>
+              Target: AGENT {selectedUser?.id.substring(0, 8).toUpperCase()}
+            </Text>
+
+            <TextInput 
+              style={styles.textInput} 
+              value={bonusXp} 
+              onChangeText={setBonusXp} 
+              placeholder="e.g. 500" 
+              placeholderTextColor="#475569" 
+              keyboardType="numeric" 
+            />
+            
             <View style={{ flexDirection: 'row', gap: 10 }}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsModalVisible(false)}><Text style={{ color: '#fff', fontWeight: 'bold' }}>CANCEL</Text></TouchableOpacity>
-              <TouchableOpacity style={styles.saveBtn} onPress={handleGrantXp}><Text style={{ color: '#000', fontWeight: 'bold' }}>CONFIRM</Text></TouchableOpacity>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setIsModalVisible(false)} disabled={isUpdating}>
+                <Text style={{ color: '#fff', fontWeight: 'bold' }}>CANCEL</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.saveBtn} onPress={handleGrantXp} disabled={isUpdating}>
+                {isUpdating ? <ActivityIndicator color="#000" /> : <Text style={{ color: '#000', fontWeight: 'bold' }}>CONFIRM</Text>}
+              </TouchableOpacity>
             </View>
           </View>
         </View>
@@ -95,8 +133,8 @@ const styles = StyleSheet.create({
   grantButtonText: { color: '#FFFFFF', fontSize: 12, fontWeight: '900' },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', padding: 20 },
   modalContainer: { backgroundColor: '#111820', borderRadius: 24, padding: 24, borderWidth: 2, borderColor: '#00FFED' },
-  modalTitle: { color: '#00FFED', fontSize: 20, fontWeight: '900', fontStyle: 'italic', marginBottom: 20, textAlign: 'center' },
-  textInput: { backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: '#475569', borderRadius: 12, padding: 14, color: '#fff', fontSize: 16, marginBottom: 20, textAlign: 'center' },
+  modalTitle: { color: '#00FFED', fontSize: 20, fontWeight: '900', fontStyle: 'italic', marginBottom: 5, textAlign: 'center' },
+  textInput: { backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 1, borderColor: '#475569', borderRadius: 12, padding: 14, color: '#fff', fontSize: 20, marginBottom: 20, textAlign: 'center', fontWeight: 'bold', letterSpacing: 2 },
   cancelBtn: { flex: 1, paddingVertical: 16, borderRadius: 999, borderWidth: 2, borderColor: 'rgba(255,255,255,0.3)', alignItems: 'center' },
   saveBtn: { flex: 1, paddingVertical: 16, borderRadius: 999, backgroundColor: '#00FFED', alignItems: 'center' }
 });
