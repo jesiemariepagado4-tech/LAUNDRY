@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "782994470105",
+    "project_id": "laundirt-3b50a",
+    "storage_bucket": "laundirt-3b50a.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:782994470105:android:0ec016df8dc6fdc7be3ac8",
+        "android_client_info": {
+          "package_name": "com.captainwash.labau"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "782994470105-7u48js4s6e5v22eb9dimfhveqhtf5i48.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDl5j_WvXg3HF6lPBUPope5PWRXexk4AqM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "782994470105-7u48js4s6e5v22eb9dimfhveqhtf5i48.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

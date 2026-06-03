@@ -25,6 +25,9 @@ import AdminActiveMissionsScreen from './screens/AdminActiveMissionsScreen';
 import AdminFinanceScreen from './screens/AdminFinanceScreen';
 import AdminRewardsScreen from './screens/AdminRewardsScreen';
 import UserManagementScreen from './screens/UserManagementScreen';   // ← Added
+import AdminServicesScreen from './screens/AdminServicesScreen';
+import AdminArchivesScreen from './screens/AdminArchivesScreen';
+import AdminCommsScreen from './screens/AdminCommsScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -96,8 +99,11 @@ export default function App() {
 
           <Stack.Screen name="AdminActiveMissions" component={AdminActiveMissionsScreen} />
           <Stack.Screen name="AdminFinance" component={AdminFinanceScreen} />
-          <Stack.Screen name="AdminArchives" component={CommandCenterScreen} />
           <Stack.Screen name="AdminRewards" component={AdminRewardsScreen} />
+          <Stack.Screen name="AdminServices" component={AdminServicesScreen} />
+          <Stack.Screen name="AdminArchives" component={AdminArchivesScreen} />
+          <Stack.Screen name="AdminComms" component={AdminCommsScreen} />
+            
           
           {/* ✅ Added User Management Screen */}
           <Stack.Screen name="UserManagement" component={UserManagementScreen} />

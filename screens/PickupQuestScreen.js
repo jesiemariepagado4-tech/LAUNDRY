@@ -6,11 +6,10 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { WebView } from 'react-native-webview';
-import { Svg, Path, Circle } from 'react-native-svg';
+import { Svg, Path } from 'react-native-svg';
 import * as Location from 'expo-location';
 
-// Firebase
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, serverTimestamp, doc, getDoc, updateDoc, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../config/firebase'; 
 
 export default function PickupQuestScreen({ navigation }) {
@@ -18,7 +17,10 @@ export default function PickupQuestScreen({ navigation }) {
   const isSmallPhone = width < 390;
   const webViewRef = useRef(null);
 
-  const [service, setService] = useState('wash');
+  const [laundryServices, setLaundryServices] = useState([]);
+  const [isLoadingServices, setIsLoadingServices] = useState(true);
+
+  const [service, setService] = useState(null); 
   const [address, setAddress] = useState('');
   const [date, setDate] = useState(new Date());
   const [time, setTime] = useState(new Date());
@@ -31,23 +33,44 @@ export default function PickupQuestScreen({ navigation }) {
   const [isDeploying, setIsDeploying] = useState(false);
   const [suggestions, setSuggestions] = useState([]);
 
-  const laundryServices = [
-    { 
-      id: 'wash', label: 'Wash & Fold', priceText: 'Base Rate: ₱150.00 / kg', desc: 'Final price calculated after weigh-in.',
-      svg: <Path d="M4 8H20V20C20 21.1046 19.1046 22 18 22H6C4.89543 22 4 21.1046 4 20V8Z" stroke="white" strokeWidth="2" strokeLinejoin="round"/> 
-    },
-    { 
-      id: 'dry', label: 'Dry Cleaning', priceText: 'Base Rate: ₱450.00 / item', desc: 'Final price calculated after item count.',
-      svg: <Path d="M6 5H18L20 9V20C20 21.1046 19.1046 22 18 22H6C4.89543 22 4 21.1046 4 20V9L6 5Z" stroke="white" strokeWidth="2" strokeLinejoin="round"/> 
-    },
-    { 
-      id: 'premium', label: 'Premium', priceText: 'Base Rate: ₱850.00 / item', desc: 'Subject to inspection and material type.',
-      svg: <Path d="M12 2L15 8L22 9L17 14L18 21L12 17L6 21L7 14L2 9L9 8L12 2Z" stroke="white" strokeWidth="2" strokeLinejoin="round"/> 
-    }
-  ];
+  useEffect(() => {
+    const unsubscribe = onSnapshot(collection(db, 'services'), (snapshot) => {
+      const servicesData = [];
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const isDeleted = data.isDeleted || data.isArchived || data.status === 'deleted' || data.status === 'archived';
+        if (!isDeleted) {
+          servicesData.push({ id: docSnap.id, ...data });
+        }
+      });
+      
+      servicesData.sort((a, b) => {
+        const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : 0;
+        const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : 0;
+        return timeA - timeB; 
+      });
+
+      setLaundryServices(servicesData);
+      
+      if (servicesData.length > 0 && !service) {
+        const firstActive = servicesData.find(s => s.isActive !== false && s.status !== 'deactivated' && s.status !== 'inactive');
+        if (firstActive) {
+          setService(firstActive.id);
+        }
+      }
+      
+      setIsLoadingServices(false);
+    }, (error) => {
+      console.error("Error fetching services:", error);
+      setIsLoadingServices(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   const selectedServiceData = laundryServices.find(s => s.id === service);
 
+  // FIX: Added headers to the fetch request in the HTML so map clicks don't fail
   const leafletHTML = `
     <!DOCTYPE html>
     <html>
@@ -74,7 +97,10 @@ export default function PickupQuestScreen({ navigation }) {
         map.on('click', function(e) {
           var lat = e.latlng.lat; var lng = e.latlng.lng;
           setLocationFromApp(lat, lng);
-          fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng)
+          
+          fetch('https://nominatim.openstreetmap.org/reverse?format=json&lat=' + lat + '&lon=' + lng, {
+            headers: { 'User-Agent': 'LabU App (com.captainwash.labau)' }
+          })
             .then(res => res.json())
             .then(data => {
               var payload = JSON.stringify({ address: data.display_name || ("Lat: " + lat.toFixed(5) + ", Lng: " + lng.toFixed(5)) });
@@ -102,7 +128,9 @@ export default function PickupQuestScreen({ navigation }) {
     setAddress(text);
     if (text.length > 4) {
       try {
-        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(text)}&limit=4`);
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(text)}&limit=4`, {
+          headers: { 'User-Agent': 'LabU App (com.captainwash.labau)' }
+        });
         setSuggestions(await res.json());
       } catch(e) {}
     } else setSuggestions([]);
@@ -114,18 +142,34 @@ export default function PickupQuestScreen({ navigation }) {
     moveMapTo(item.lat, item.lon);
   };
 
+  // FIX: Added headers to OpenStreetMap and updated error handling
   const handleAutoLocate = async () => {
     setIsLocating(true);
     try {
       let { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') { Alert.alert('Denied', 'Allow location access.'); setIsLocating(false); return; }
+      if (status !== 'granted') { 
+        Alert.alert('Denied', 'Allow location access in your phone settings.'); 
+        setIsLocating(false); 
+        return; 
+      }
+      
       let location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
       const { latitude, longitude } = location.coords;
       moveMapTo(latitude, longitude);
-      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`);
+      
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`, {
+        headers: { 'User-Agent': 'LabU App (com.captainwash.labau)' }
+      });
+      
       const data = await response.json();
       setAddress(data.display_name ? data.display_name : `Lat: ${latitude.toFixed(5)}, Lng: ${longitude.toFixed(5)}`);
-    } catch (error) { Alert.alert("Error", "Could not fetch location."); } finally { setIsLocating(false); }
+      
+    } catch (error) { 
+      // This will now show you the actual reason if it fails!
+      Alert.alert("Error", error.message || "Could not fetch location."); 
+    } finally { 
+      setIsLocating(false); 
+    }
   };
 
   const handleMapMessage = (dataString) => {
@@ -154,8 +198,11 @@ export default function PickupQuestScreen({ navigation }) {
     } else setShowTimePicker(true);
   };
 
-  // --- RESTORED: DEPLOY MISSION DIRECTLY TO FIREBASE ---
   const handleConfirmBooking = async () => {
+    if (!selectedServiceData) {
+      Alert.alert("Error", "Please select a laundry service before deploying.");
+      return;
+    }
     if (!address.trim()) {
       Alert.alert("Mission Failed", "Please select a pickup address from the map.");
       return;
@@ -171,8 +218,14 @@ export default function PickupQuestScreen({ navigation }) {
       const generatedMissionId = '#' + Math.floor(100 + Math.random() * 900);
       const formattedDateTime = `${date.toDateString()} at ${time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
 
-      // Save directly to Firebase
-      await addDoc(collection(db, 'missions'), {
+      const userRef = doc(db, 'users', auth.currentUser.uid);
+      const userSnap = await getDoc(userRef);
+      let userDiscount = null;
+      if (userSnap.exists()) {
+        userDiscount = userSnap.data().activeDiscount || null;
+      }
+
+      const docRef = await addDoc(collection(db, 'missions'), {
         userId: auth.currentUser.uid,
         userEmail: auth.currentUser.email,
         missionId: generatedMissionId,
@@ -182,19 +235,33 @@ export default function PickupQuestScreen({ navigation }) {
         pickupDate: date.toISOString(),
         pickupTime: time.toISOString(),
         displayDateTime: formattedDateTime,
-        status: 'pending_pickup', // Status before weigh-in
+        status: 'pending_pickup', 
         paymentStatus: 'unpaid',
+        appliedDiscount: userDiscount, 
         createdAt: serverTimestamp()
       });
 
+      if (userDiscount) {
+        await updateDoc(userRef, { activeDiscount: null });
+      }
+
       setIsDeploying(false);
 
-      // Route directly to tracking screen
-      navigation.navigate('MissionProgress', {
-        bookingId: generatedMissionId,
-        service: selectedServiceData.label,
-        address: address,
-        datetime: formattedDateTime
+      navigation.reset({
+        index: 1,
+        routes: [
+          { name: 'Dashboard' }, 
+          { 
+            name: 'MissionProgress', 
+            params: {
+              missionDocId: docRef.id,         
+              displayId: generatedMissionId,   
+              service: selectedServiceData.label,
+              address: address,
+              datetime: formattedDateTime
+            }
+          }
+        ],
       });
 
     } catch (error) {
@@ -208,7 +275,6 @@ export default function PickupQuestScreen({ navigation }) {
     <SafeAreaView style={{ flex: 1, backgroundColor: '#2D1A5B' }}>
       <ScrollView style={{ flex: 1, paddingHorizontal: isSmallPhone ? 20 : 24, paddingTop: 20 }} contentContainerStyle={{ paddingBottom: 100 }}>
         
-        {/* Header */}
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 30 }}>
           <TouchableOpacity onPress={() => navigation.goBack()}>
             <Svg width={28} height={28} viewBox="0 0 24 24" fill="none" style={{ marginRight: 12 }}>
@@ -220,34 +286,58 @@ export default function PickupQuestScreen({ navigation }) {
 
         <View style={{ gap: 32 }}>
 
-          {/* 1. SERVICE WITH PRICING INFO */}
           <View>
             <Text style={{ color: '#FF1493', fontSize: 14, fontWeight: '700', marginBottom: 12, letterSpacing: 1 }}>1. LAUNDRY SERVICE</Text>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              {laundryServices.map(item => (
-                <TouchableOpacity 
-                  key={item.id} onPress={() => setService(item.id)}
-                  style={{
-                    flex: 1, paddingVertical: 20, borderRadius: 20, borderWidth: 2,
-                    borderColor: service === item.id ? '#00FFED' : '#475569',
-                    backgroundColor: service === item.id ? 'rgba(0,255,237,0.1)' : 'rgba(255,255,255,0.05)',
-                    alignItems: 'center'
-                  }}
-                >
-                  <Svg width={40} height={40} viewBox="0 0 24 24" fill="none">{item.svg}</Svg>
-                  <Text style={{ color: '#fff', fontWeight: '700', marginTop: 8 }}>{item.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            
+            {isLoadingServices ? (
+              <View style={{ alignItems: 'center', padding: 20, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20 }}>
+                <ActivityIndicator color="#00FFED" />
+                <Text style={{ color: '#00FFED', marginTop: 10 }}>Syncing Services with HQ...</Text>
+              </View>
+            ) : laundryServices.length === 0 ? (
+              <View style={{ alignItems: 'center', padding: 20, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 20 }}>
+                <Text style={{ color: '#FF1493', fontWeight: 'bold' }}>No services available right now.</Text>
+              </View>
+            ) : (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12 }}>
+                {laundryServices.map(item => {
+                  const isDeactivated = item.isActive === false || item.status === 'deactivated' || item.status === 'inactive';
+                  
+                  return (
+                    <View key={item.id} style={{ width: 140, opacity: isDeactivated ? 0.6 : 1 }}>
+                      <TouchableOpacity 
+                        disabled={isDeactivated}
+                        onPress={() => setService(item.id)}
+                        style={{
+                          paddingVertical: 20, borderRadius: 20, borderWidth: 2,
+                          borderColor: service === item.id ? '#00FFED' : '#475569',
+                          backgroundColor: service === item.id ? 'rgba(0,255,237,0.1)' : 'rgba(255,255,255,0.05)',
+                          alignItems: 'center'
+                        }}
+                      >
+                        <Text style={{ fontSize: 40, marginBottom: 8 }}>{item.icon || '👕'}</Text>
+                        <Text style={{ color: '#fff', fontWeight: '700', textAlign: 'center' }}>{item.label}</Text>
+                      </TouchableOpacity>
 
-            {/* Selected Service Pricing Box */}
-            <View style={{ backgroundColor: 'rgba(0,255,237,0.1)', padding: 16, borderRadius: 16, marginTop: 16, borderWidth: 1, borderColor: 'rgba(0,255,237,0.3)' }}>
-              <Text style={{ color: '#00FFED', fontWeight: '900', fontSize: 16 }}>{selectedServiceData.priceText}</Text>
-              <Text style={{ color: '#fff', opacity: 0.8, fontSize: 13, marginTop: 4 }}>{selectedServiceData.desc}</Text>
-            </View>
+                      {isDeactivated && (
+                        <Text style={{ color: '#FF1493', fontSize: 11, textAlign: 'center', marginTop: 6, fontWeight: '600' }}>
+                          {item.inactiveReason || item.deactivationReason || 'Temporarily Unavailable'}
+                        </Text>
+                      )}
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+
+            {selectedServiceData && (
+              <View style={{ backgroundColor: 'rgba(0,255,237,0.1)', padding: 16, borderRadius: 16, marginTop: 16, borderWidth: 1, borderColor: 'rgba(0,255,237,0.3)' }}>
+                <Text style={{ color: '#00FFED', fontWeight: '900', fontSize: 16 }}>{selectedServiceData.priceText}</Text>
+                <Text style={{ color: '#fff', opacity: 0.8, fontSize: 13, marginTop: 4 }}>{selectedServiceData.desc}</Text>
+              </View>
+            )}
           </View>
 
-          {/* 2. ADDRESS */}
           <View>
             <Text style={{ color: '#00FFED', fontSize: 14, fontWeight: '700', marginBottom: 12, letterSpacing: 1 }}>2. PICKUP ADDRESS</Text>
             <TouchableOpacity onPress={() => setShowMapModal(true)} style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 2, borderColor: '#00FFED33', borderRadius: 20, padding: 18, minHeight: 110, flexDirection: 'row' }}>
@@ -255,7 +345,6 @@ export default function PickupQuestScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* 3. DATE & TIME */}
           <View>
             <Text style={{ color: '#00FFED', fontSize: 14, fontWeight: '700', marginBottom: 12, letterSpacing: 1 }}>3. PICKUP DATE & TIME</Text>
             <TouchableOpacity onPress={handleDatePress} style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderRadius: 20, padding: 18, marginBottom: 12, borderWidth: 2, borderColor: '#00FFED33' }}>
@@ -268,17 +357,15 @@ export default function PickupQuestScreen({ navigation }) {
             </TouchableOpacity>
           </View>
 
-          {/* 4. NOTES */}
           <View>
             <Text style={{ color: '#00FFED', fontSize: 14, fontWeight: '700', marginBottom: 12, letterSpacing: 1 }}>4. ADDITIONAL NOTES (OPTIONAL)</Text>
             <TextInput placeholder="Gate code, instructions..." placeholderTextColor="rgba(255,255,255,0.5)" value={notes} onChangeText={setNotes} multiline style={{ backgroundColor: 'rgba(255,255,255,0.08)', borderWidth: 2, borderColor: '#00FFED33', borderRadius: 20, padding: 18, color: '#fff', fontSize: 16, minHeight: 90, textAlignVertical: 'top' }} />
           </View>
 
-          {/* DEPLOY BUTTON */}
           <TouchableOpacity 
             onPress={handleConfirmBooking} 
-            disabled={isDeploying}
-            style={{ marginTop: 10, backgroundColor: '#FF1493', paddingVertical: 20, borderRadius: 999, alignItems: 'center', borderBottomWidth: 6, borderBottomColor: '#C40D72' }}
+            disabled={isDeploying || !selectedServiceData || laundryServices.length === 0}
+            style={{ marginTop: 10, backgroundColor: '#FF1493', paddingVertical: 20, borderRadius: 999, alignItems: 'center', borderBottomWidth: 6, borderBottomColor: '#C40D72', opacity: (laundryServices.length === 0 || !selectedServiceData) ? 0.5 : 1 }}
           >
             {isDeploying ? <ActivityIndicator color="#FFFFFF" /> : <Text style={{ color: '#FFFFFF', fontSize: 19, fontWeight: '900', letterSpacing: 1 }}>CONFIRM & DEPLOY MISSION</Text>}
           </TouchableOpacity>

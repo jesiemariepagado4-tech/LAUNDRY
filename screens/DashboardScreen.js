@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, useWindowDimensions, ActivityIndicator, Modal, TouchableWithoutFeedback, StyleSheet, Alert } from 'react-native';
+import { 
+  View, Text, TouchableOpacity, ScrollView, useWindowDimensions, 
+  ActivityIndicator, Modal, TouchableWithoutFeedback, StyleSheet, Alert, Image 
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Svg, Path, Circle } from 'react-native-svg';
 
-// --- FIREBASE & STORAGE IMPORTS ---
-// FIXED: Added updateDoc to the imports so we can update the mission status
-import { collection, query, where, onSnapshot, doc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, doc, setDoc, updateDoc, orderBy, limit } from 'firebase/firestore';
 import { onAuthStateChanged, signOut } from 'firebase/auth'; 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { db, auth } from '../config/firebase';
@@ -20,7 +21,14 @@ export default function DashboardScreen({ navigation }) {
   
   const [isDropdownVisible, setIsDropdownVisible] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  
   const [userXp, setUserXp] = useState(0);
+  const [userAvatar, setUserAvatar] = useState(null); 
+  const [heroName, setHeroName] = useState(null); 
+
+  // --- NOTIFICATION STATE ---
+  const [hasNewAlert, setHasNewAlert] = useState(false);
+  const [latestAlertId, setLatestAlertId] = useState(null); // Tracks the newest broadcast ID
 
   const handleLogout = async () => {
     setIsDropdownVisible(false);
@@ -41,12 +49,14 @@ export default function DashboardScreen({ navigation }) {
   useEffect(() => {
     let unsubscribeSnapshot;
     let unsubscribeUser;
+    let unsubscribeBroadcasts;
 
     const unsubscribeAuth = onAuthStateChanged(auth, (user) => {
       if (user) {
         setUserEmail(user.email);
         
         try {
+          // 1. Fetch Missions
           const q = query(collection(db, 'missions'), where('userId', '==', user.uid));
           unsubscribeSnapshot = onSnapshot(q, (snapshot) => {
             const missionsData = [];
@@ -56,7 +66,6 @@ export default function DashboardScreen({ navigation }) {
               }
             });
             
-            // The filter already checks for !mission.userCleared!
             const visibleMissions = missionsData
               .filter(mission => !mission.userCleared && mission.status !== 'cancelled')
               .sort((a, b) => {
@@ -69,13 +78,35 @@ export default function DashboardScreen({ navigation }) {
             setIsLoading(false);
           });
 
+          // 2. Fetch User Profile Data
           const userRef = doc(db, 'users', user.uid);
           unsubscribeUser = onSnapshot(userRef, (docSnap) => {
             if (docSnap.exists()) {
-              setUserXp(docSnap.data().xpBalance || 0);
+              const data = docSnap.data();
+              setUserXp(data.xpBalance || 0); 
+              setUserAvatar(data.skin || data.avatar || data.profilePic || data.photoURL || null);
+              setHeroName(data.heroName || null);
             } else {
               setDoc(userRef, { xpBalance: 0, lifetimeXp: 0, activeDiscounts: [] }, { merge: true });
               setUserXp(0);
+            }
+          });
+
+          // 3. THE BULLETPROOF NOTIFICATION CHECK (Using Document IDs)
+          const broadcastQuery = query(collection(db, 'broadcasts'), orderBy('createdAt', 'desc'), limit(1));
+          unsubscribeBroadcasts = onSnapshot(broadcastQuery, async (snapshot) => {
+            if (!snapshot.empty) {
+              const newestDocId = snapshot.docs.id;
+              setLatestAlertId(newestDocId); // Save it to state for later
+
+              const lastSeenId = await AsyncStorage.getItem('@last_seen_alert_id');
+              
+              // If we've never clicked the bell, or the newest ID doesn't match the one we saved, SHOW DOT!
+              if (newestDocId !== lastSeenId) {
+                setHasNewAlert(true);
+              } else {
+                setHasNewAlert(false);
+              }
             }
           });
 
@@ -83,9 +114,16 @@ export default function DashboardScreen({ navigation }) {
           setIsLoading(false);
         }
       } else {
+        if (unsubscribeSnapshot) unsubscribeSnapshot();
+        if (unsubscribeUser) unsubscribeUser();
+        if (unsubscribeBroadcasts) unsubscribeBroadcasts();
+
         setUserEmail("Agent Offline");
         setMyMissions([]);
         setUserXp(0);
+        setUserAvatar(null);
+        setHeroName(null);
+        setHasNewAlert(false);
         setIsLoading(false);
       }
     });
@@ -94,14 +132,24 @@ export default function DashboardScreen({ navigation }) {
       if (unsubscribeAuth) unsubscribeAuth();
       if (unsubscribeSnapshot) unsubscribeSnapshot();
       if (unsubscribeUser) unsubscribeUser();
+      if (unsubscribeBroadcasts) unsubscribeBroadcasts();
     };
   }, []);
 
-  // --- NEW: FUNCTION TO HIDE DELIVERED MISSIONS FROM DASHBOARD ---
+  // --- UPDATED ALERT PRESS HANDLER ---
+  const handleAlertPress = async () => {
+    // Save the exact Document ID of the newest broadcast we just saw
+    if (latestAlertId) {
+      await AsyncStorage.setItem('@last_seen_alert_id', latestAlertId);
+    }
+    setHasNewAlert(false); // Clear the dot instantly
+    navigation.navigate('AlertComms');
+  };
+
   const handleClearMission = async (missionId) => {
     try {
       await updateDoc(doc(db, 'missions', missionId), {
-        userCleared: true // This will hide it from the Dashboard but keep it in History
+        userCleared: true 
       });
     } catch (error) {
       console.error("Error clearing mission:", error);
@@ -126,15 +174,9 @@ export default function DashboardScreen({ navigation }) {
     }
   };
 
-  let userName = "CAPTAIN_WASH";
-  try {
-    if (userEmail && userEmail !== "Agent Offline") {
-      const emailString = String(userEmail);
-      const atIndex = emailString.indexOf('@');
-      if (atIndex > 0) userName = emailString.substring(0, atIndex).toUpperCase();
-    }
-  } catch (err) {
-    userName = "CAPTAIN_WASH";
+  let displayUserName = "RECRUIT";
+  if (heroName && heroName.trim() !== "") {
+    displayUserName = heroName.toUpperCase();
   }
 
   const userLevel = Math.floor(userXp / 500) + 1;
@@ -160,13 +202,35 @@ export default function DashboardScreen({ navigation }) {
       </Modal>
 
       <View style={{ backgroundColor: '#1A0D3A', padding: isSmallPhone ? 18 : 24, paddingTop: isSmallPhone ? 50 : 48, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 2, borderBottomColor: '#00FFED' }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <TouchableOpacity onPress={() => setIsDropdownVisible(true)} style={{ width: isSmallPhone ? 48 : 52, height: isSmallPhone ? 48 : 52, borderRadius: 999, borderWidth: 4, borderColor: '#00FFED', backgroundColor: '#FF1493', alignItems: 'center', justifyContent: 'center', marginRight: isSmallPhone ? 12 : 16 }}>
-            <Text style={{ fontSize: isSmallPhone ? 26 : 28 }}>🧑‍🚀</Text>
+        
+        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+          
+          <TouchableOpacity 
+            onPress={() => setIsDropdownVisible(true)} 
+            style={{ 
+              width: isSmallPhone ? 48 : 52, 
+              height: isSmallPhone ? 48 : 52, 
+              borderRadius: 999, 
+              borderWidth: 4, 
+              borderColor: '#00FFED', 
+              backgroundColor: '#FF1493', 
+              alignItems: 'center', 
+              justifyContent: 'center', 
+              marginRight: isSmallPhone ? 12 : 16,
+              overflow: 'hidden' 
+            }}
+          >
+            {userAvatar && (userAvatar.startsWith('http') || userAvatar.startsWith('file') || userAvatar.startsWith('data:image')) ? (
+              <Image source={{ uri: userAvatar }} style={{ width: '100%', height: '100%' }} resizeMode="cover" />
+            ) : (
+              <Text style={{ fontSize: isSmallPhone ? 26 : 28 }}>{userAvatar || '🧑‍🚀'}</Text>
+            )}
           </TouchableOpacity>
-          <View>
-            <Text style={{ color: '#FFFFFF', fontSize: isSmallPhone ? 17.5 : 19, fontWeight: '650', letterSpacing: 0.1 }}>Welcome, {userName}!</Text>
-            <Text style={{ color: '#00FFED', fontSize: 11, marginTop: 2, fontWeight: '700', letterSpacing: 0.5 }}>{userEmail}</Text>
+
+          <View style={{ flex: 1, paddingRight: 15 }}>
+            <Text numberOfLines={1} ellipsizeMode="tail" style={{ color: '#FFFFFF', fontSize: isSmallPhone ? 17.5 : 19, fontWeight: '650', letterSpacing: 0.1 }}>
+              Welcome, {displayUserName}!
+            </Text>
             
             <TouchableOpacity onPress={() => navigation.navigate('AchievementBadgesScreen')} style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4, paddingVertical: 4 }}>
               <Text style={{ color: '#FF1493', fontSize: isSmallPhone ? 11.5 : 12.5, fontWeight: '700' }}>Lvl {userLevel}</Text>
@@ -177,11 +241,25 @@ export default function DashboardScreen({ navigation }) {
             </TouchableOpacity>
           </View>
         </View>
-        <TouchableOpacity onPress={() => navigation.navigate('AlertComms')}>
+        
+        <TouchableOpacity onPress={handleAlertPress} style={{ position: 'relative' }}>
           <Svg width={28} height={28} viewBox="0 0 24 24" fill="none">
             <Path d="M12 22C13.1046 22 14 21.1046 14 20H10C10 21.1046 10.8954 22 12 22Z" fill="#00FFED" stroke="#00FFED" strokeWidth="2" strokeLinejoin="round"/>
             <Path d="M18 16V11C18 7.93297 16.3668 5.3644 13.5 4.68185V4C13.5 3.17157 12.8284 2.5 12 2.5C11.1716 2.5 10.5 3.17157 10.5 4V4.68185C7.6332 5.3644 6 7.93297 6 11V16L4 18H20L18 16Z" stroke="#00FFED" strokeWidth="2" strokeLinejoin="round"/>
           </Svg>
+          {hasNewAlert && (
+            <View style={{ 
+              position: 'absolute', 
+              top: -2, 
+              right: 1, 
+              width: 12, 
+              height: 12, 
+              backgroundColor: '#FF1493', 
+              borderRadius: 6, 
+              borderWidth: 2, 
+              borderColor: '#1A0D3A' 
+            }} />
+          )}
         </TouchableOpacity>
       </View>
 
@@ -214,7 +292,6 @@ export default function DashboardScreen({ navigation }) {
             const safeTime = mission?.displayDateTime ? String(mission.displayDateTime) : 'Awaiting Time Data';
             const statusStyle = getStatusDisplay(mission?.status);
             
-            // Check if the mission is fully completed/delivered
             const isDelivered = mission?.status === 'delivered' || mission?.status === 'completed';
             
             return (
@@ -239,7 +316,6 @@ export default function DashboardScreen({ navigation }) {
                 </View>
                 <Text style={{ color: statusStyle.color, fontSize: 12.5, fontWeight: '700', textAlign: 'center', marginTop: 8 }}>{statusStyle.text}</Text>
 
-                {/* --- NEW: REMOVE FROM DASHBOARD BUTTON (ONLY SHOWS IF DELIVERED) --- */}
                 {isDelivered && (
                   <TouchableOpacity 
                     style={{ marginTop: 20, backgroundColor: 'rgba(0,255,237,0.1)', borderWidth: 1, borderColor: '#00FFED', paddingVertical: 12, borderRadius: 12, alignItems: 'center' }}
@@ -248,7 +324,6 @@ export default function DashboardScreen({ navigation }) {
                     <Text style={{ color: '#00FFED', fontWeight: '900', fontSize: 12, letterSpacing: 1 }}>REMOVE FROM ACTIVE DASHBOARD</Text>
                   </TouchableOpacity>
                 )}
-                
               </TouchableOpacity>
             );
           })

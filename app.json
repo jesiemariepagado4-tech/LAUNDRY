@@ -2,7 +2,8 @@
   "expo": {
     "name": "LabU",
     "slug": "LabU",
-    "version": "1.0.0",
+    "version": "1.0.2",
+    "scheme": ["labu", "com.captainwash.labau"],
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
@@ -16,14 +17,28 @@
       "supportsTablet": true
     },
     "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
+      "package": "com.captainwash.labau",
+      "googleServicesFile": "./google-services.json",
       "edgeToEdgeEnabled": true
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-web-browser",
+      "@react-native-community/datetimepicker",
+      [
+        "expo-location",
+        {
+          "locationAlwaysPermission": "Allow LabU to access your location to help with your pickups.",
+          "locationWhenInUsePermission": "Allow LabU to access your location to help with your pickups."
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "fba04fb0-f830-4dff-8281-54a4168a7b34"
+      }
     }
   }
 }
