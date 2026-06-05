@@ -177,6 +177,14 @@ export default function AdminActiveMissionsScreen({ navigation }) {
 
                 <Text style={styles.missionDetails} numberOfLines={2}>📍 {mission.address || 'Zone Unknown'}</Text>
                 
+                {/* --- ADDED: USER SPECIAL INSTRUCTIONS / NOTES --- */}
+                {mission.notes ? (
+                  <View style={styles.notesContainer}>
+                    <Text style={styles.notesLabel}>SPECIAL INSTRUCTIONS:</Text>
+                    <Text style={styles.notesText}>{mission.notes}</Text>
+                  </View>
+                ) : null}
+                
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 10, flexWrap: 'wrap' }}>
                   <Text style={[styles.statusBadge, { color: mission.status === 'weigh_in' ? '#FF1493' : '#00FFED', borderColor: mission.status === 'weigh_in' ? 'rgba(255,20,147,0.4)' : 'rgba(0,255,237,0.4)' }]}>
                     {String(mission.status || 'pending').replace(/_/g, ' ').toUpperCase()}
@@ -304,6 +312,12 @@ const styles = StyleSheet.create({
   missionInfo: { flex: 1, paddingRight: 15 },
   missionIdName: { color: '#FF1493', fontSize: 14, fontWeight: '900', letterSpacing: 1, marginBottom: 6, fontFamily: 'monospace' },
   missionDetails: { color: '#8d85b1', fontSize: 13, lineHeight: 18 },
+  
+  // --- ADDED: Notes Styles ---
+  notesContainer: { marginTop: 8, backgroundColor: 'rgba(255, 215, 0, 0.1)', padding: 10, borderRadius: 8, borderLeftWidth: 3, borderLeftColor: '#FFD700' },
+  notesLabel: { color: '#FFD700', fontSize: 10, fontWeight: '900', letterSpacing: 0.5, marginBottom: 4 },
+  notesText: { color: '#FFFFFF', fontSize: 12, opacity: 0.9, lineHeight: 18 },
+
   statusBadge: { borderWidth: 1, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, fontSize: 10, fontWeight: 'bold', backgroundColor: 'rgba(255,255,255,0.05)' },
   
   updateButton: { backgroundColor: '#FF1493', paddingVertical: 12, paddingHorizontal: 16, borderRadius: 12 },

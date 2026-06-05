@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   View, Text, TouchableOpacity, ScrollView, useWindowDimensions, 
   Modal, FlatList, TextInput, TouchableWithoutFeedback, ActivityIndicator 
@@ -6,7 +6,9 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { signOut } from 'firebase/auth';
-import { doc, updateDoc } from 'firebase/firestore';
+
+// --- ADDED: getDoc to fetch user data ---
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from '../config/firebase';
 import LogoutModal from '../components/LogoutModal';
 
@@ -18,11 +20,51 @@ export default function HeroSpecsScreen({ navigation }) {
   const [isDeactivateModalVisible, setIsDeactivateModalVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   
+  // --- UPDATED: Default states before data loads ---
   const [avatar, setAvatar] = useState('🧑‍🚀');
-  const [name, setName] = useState('Captain_Wash');
+  const [name, setName] = useState('Loading...');
+  
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
   const [isFullViewModalVisible, setIsFullViewModalVisible] = useState(false);
   const availableAvatars = ['🧑‍🚀', '👽', '🤖', '👩‍🚀', '🛸', '☄️', '👨‍🚀', '👾'];
+
+  // --- NEW: Fetch user data on screen load ---
+  useEffect(() => {
+    const fetchUserData = async () => {
+      if (auth.currentUser) {
+        try {
+          const userRef = doc(db, 'users', auth.currentUser.uid);
+          const userSnap = await getDoc(userRef);
+          
+          if (userSnap.exists()) {
+            const data = userSnap.data();
+            if (data.heroName) setName(data.heroName);
+            if (data.skin) setAvatar(data.skin);
+          }
+        } catch (error) {
+          console.error("Error fetching user data:", error);
+        }
+      }
+    };
+
+    fetchUserData();
+  }, []);
+
+  // --- NEW: Save profile edits to Firestore ---
+  const handleSaveProfile = async () => {
+    setIsEditModalVisible(false);
+    if (!auth.currentUser) return;
+    
+    try {
+      const userRef = doc(db, 'users', auth.currentUser.uid);
+      await updateDoc(userRef, {
+        heroName: name,
+        skin: avatar
+      });
+    } catch (error) {
+      console.error("Error updating profile:", error);
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -52,7 +94,6 @@ export default function HeroSpecsScreen({ navigation }) {
     setIsLoading(true);
 
     try {
-      // 1. Update the user's status in Firestore
       const userRef = doc(db, 'users', auth.currentUser.uid);
       await updateDoc(userRef, {
         status: 'deactivated',
@@ -60,7 +101,6 @@ export default function HeroSpecsScreen({ navigation }) {
         deactivatedAt: new Date()
       });
 
-      // 2. Proceed to logout the user
       await handleLogout();
 
     } catch (error) {
@@ -170,7 +210,8 @@ export default function HeroSpecsScreen({ navigation }) {
             )}
             keyExtractor={(item) => item}
           />
-          <TouchableOpacity onPress={() => setIsEditModalVisible(false)} style={{ marginTop: 30, backgroundColor: '#00FFED', padding: 15, borderRadius: 20, alignItems: 'center' }}>
+          {/* --- UPDATED: Connected to Firestore update function --- */}
+          <TouchableOpacity onPress={handleSaveProfile} style={{ marginTop: 30, backgroundColor: '#00FFED', padding: 15, borderRadius: 20, alignItems: 'center' }}>
             <Text style={{ color: '#1A0D3A', fontWeight: 'bold' }}>SAVE CHANGES</Text>
           </TouchableOpacity>
         </View>

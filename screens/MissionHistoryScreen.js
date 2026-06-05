@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   View, Text, SafeAreaView, TouchableOpacity, ScrollView, 
-  ActivityIndicator, StyleSheet 
+  ActivityIndicator, StyleSheet, Platform, StatusBar // ADDED: Platform and StatusBar
 } from 'react-native';
 import { Svg, Path } from 'react-native-svg';
 
@@ -159,7 +159,14 @@ export default function MissionHistoryScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#2D1A5B' },
   
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingTop: 20, paddingBottom: 20 },
+  // ADDED: dynamic marginTop for Android status bar clearance
+  header: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    paddingHorizontal: 24, 
+    paddingBottom: 20,
+    marginTop: Platform.OS === 'android' ? StatusBar.currentHeight + 15 : 20 
+  },
   backButton: { marginRight: 15 },
   headerTitle: { color: '#00FFED', fontSize: 28, fontWeight: '900', letterSpacing: 1 },
   

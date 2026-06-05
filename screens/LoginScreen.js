@@ -4,6 +4,7 @@ import {
   Platform, ScrollView, StatusBar, Image, ActivityIndicator, Alert 
 } from 'react-native';
 import { Svg, Path } from 'react-native-svg';
+import { Ionicons } from '@expo/vector-icons'; // Added for the eye icon
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // FIREBASE IMPORTS
@@ -22,6 +23,8 @@ export default function LoginScreen({ navigation }) {
   const [recruitId, setRecruitId] = useState('');
   const [secretPassword, setSecretPassword] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  
+  const [showPassword, setShowPassword] = useState(false); // State for password visibility
   
   const [isLoginLoading, setIsLoginLoading] = useState(false); 
   const [isGoogleLoading, setIsGoogleLoading] = useState(false); 
@@ -173,18 +176,25 @@ export default function LoginScreen({ navigation }) {
               onSubmitEditing={() => passwordInputRef.current?.focus()}
               style={{ backgroundColor: '#392b6b', borderColor: '#4e3e85', width: '100%', padding: 18, borderRadius: 28, color: '#a098c4', borderWidth: 2, paddingHorizontal: 24, fontSize: 16, fontWeight: '600', marginBottom: 16, letterSpacing: 0.5 }}
             />
-            <TextInput
-              ref={passwordInputRef}
-              placeholder="SECRET_PASSWORD"
-              placeholderTextColor="#6c6192"
-              value={secretPassword}
-              onChangeText={setSecretPassword}
-              secureTextEntry
-              autoCapitalize="none"
-              returnKeyType="go"
-              onSubmitEditing={handleLogin}
-              style={{ backgroundColor: '#392b6b', borderColor: '#4e3e85', width: '100%', padding: 18, borderRadius: 28, color: '#a098c4', borderWidth: 2, paddingHorizontal: 24, fontSize: 16, fontWeight: '600', letterSpacing: 0.5 }}
-            />
+            
+            {/* Added container around the password input to hold the eye icon */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#392b6b', borderColor: '#4e3e85', width: '100%', borderRadius: 28, borderWidth: 2 }}>
+              <TextInput
+                ref={passwordInputRef}
+                placeholder="SECRET_PASSWORD"
+                placeholderTextColor="#6c6192"
+                value={secretPassword}
+                onChangeText={setSecretPassword}
+                secureTextEntry={!showPassword}
+                autoCapitalize="none"
+                returnKeyType="go"
+                onSubmitEditing={handleLogin}
+                style={{ flex: 1, padding: 18, color: '#a098c4', paddingHorizontal: 24, fontSize: 16, fontWeight: '600', letterSpacing: 0.5 }}
+              />
+              <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={{ paddingRight: 20 }}>
+                <Ionicons name={showPassword ? "eye-off" : "eye"} size={24} color="#6c6192" />
+              </TouchableOpacity>
+            </View>
             
             {errorMessage ? (
               <Text style={{ color: '#ff0d87', textAlign: 'center', marginTop: 10, fontWeight: '600' }}>

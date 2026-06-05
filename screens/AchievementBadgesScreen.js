@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, SafeAreaView, TouchableOpacity, ScrollView, Pressable, ActivityIndicator, Modal, StyleSheet } from 'react-native';
+// ADDED: Platform and StatusBar to handle device notches properly
+import { View, Text, SafeAreaView, TouchableOpacity, ScrollView, Pressable, ActivityIndicator, Modal, StyleSheet, Platform, StatusBar } from 'react-native';
 
 // --- FIREBASE IMPORTS ---
 import { doc, onSnapshot, updateDoc, increment } from 'firebase/firestore';
@@ -240,7 +241,13 @@ export default function AchievementBadgesScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#2D1A5B' },
-  header: { flexDirection: 'row', alignItems: 'center', marginBottom: 30 },
+  // ADDED: marginTop dynamic check to safely push the header down on Android
+  header: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginBottom: 30, 
+    marginTop: Platform.OS === 'android' ? StatusBar.currentHeight + 15 : 15 
+  },
   headerTitle: { color: '#00FFED', fontSize: 30, fontWeight: '900' },
   
   fundsBox: { backgroundColor: 'rgba(255, 20, 147, 0.15)', borderWidth: 2, borderColor: '#FF1493', borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
